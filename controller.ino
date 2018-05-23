@@ -54,7 +54,10 @@ void setup()
 
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
-
+  
+  // Setup Serial
+  Serial.begin(9600); //Start a serial session
+  lastMessage = millis(); // timestamp
 }
 
 void loop()
