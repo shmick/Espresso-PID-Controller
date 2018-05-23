@@ -1,21 +1,15 @@
-/********************************************************
-   PID RelayOutput Example
-   Same as basic example, except that this time, the output
-   is going to a digital pin which (we presume) is controlling
-   a relay.  the pid is designed to Output an analog value,
-   but the relay can only be On/Off.
+/*
+Control an espresso machine boiler using a PID controller
 
-     to connect them together we use "time proportioning
-   control"  it's essentially a really slow version of PWM.
-   first we decide on a window size (5000mS say.) we then
-   set the pid to adjust its output between 0 and that window
-   size.  lastly, we add some logic that translates the PID
-   output into "Relay On Time" with the remainder of the
-   window being "Relay Off Time"
- ********************************************************/
+Code samples used from the following:
+PID Library: https://github.com/br3ttb/Arduino-PID-Library
+PID Lab: https://www.pdx.edu/nanogroup/sites/www.pdx.edu.nanogroup/files/2013_Arduino%20PID%20Lab_0.pdf
+Thermocouple polynomial coefficients: https://ez.analog.com/thread/51921
 
-// https://github.com/br3ttb/Arduino-PID-Library
-// https://www.pdx.edu/nanogroup/sites/www.pdx.edu.nanogroup/files/2013_Arduino%20PID%20Lab_0.pdf
+Hardware: 
+HeaterMeter v4.2 PCB: https://github.com/CapnBry/HeaterMeter/wiki/HeaterMeter-4.2-Hardware
+Solid State Relay: "25A SSR-25 DA"
+*/
 
 #include <PID_v1.h>
 
@@ -67,7 +61,6 @@ void loop()
 {
 
   // TC code
-  // https://ez.analog.com/thread/51921
 
   float Input;
 
