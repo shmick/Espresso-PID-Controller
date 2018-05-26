@@ -13,6 +13,11 @@
 
 #include <PID_v1.h>
 
+// After powering on, how many minutes until we force the boiler to power down
+// Turning the machine off and on again will reset the timer
+const int maxRunTime = 45;
+int timeNowMins;
+
 // HM Pins
 // TC = ADC 5
 // Blower/Relay = Digital Pin 3
@@ -20,30 +25,23 @@
 #define ThermocouplePin 5
 #define RelayPin 3
 
-// Tuning parameters
-double Kp = 10; //Initial Proportional Gain
-double Ki = 0.5; //Initial Integral Gain
-double Kd = 0; //Initial Differential Gain
-
-//Define Variables we'll be connecting to
-double Setpoint, Input, Output;
-
 //Define the aggressive Tuning Parameters
-double aggKp = 50;
-double aggKi = 0.03;
-double aggKd = 1;
+const double aggKp = 40;
+const double aggKi = 0.5;
+const double aggKd = 100;
 
 //Define the conservative Tuning Parameters
-double consKp = 3;
-double consKi = 0.01;
-double consKd = 3;
+const double consKp = 4;
+const double consKi = 0.01;
+const double consKd = 3;
 
 //Define the gap degrees to switch between aggressive and conservative mode
-int gapdeg = 15;
+const int gapDeg = 15;
 
 //Specify the links and initial tuning parameters
+double Setpoint, Input, Output;
 PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
-int WindowSize = 5000;
+const int WindowSize = 5000;
 unsigned long windowStartTime;
 
 //Define the info needed for the temperature averaging
@@ -84,14 +82,12 @@ void setup()
   for (int thisReading = 0; thisReading < numReadings; thisReading++) {
     readings[thisReading] = 0;
   }
-
 }
 
 void loop()
 {
   //Keep track of time
   now = millis();
-
 
   //get a non averaged reading
   int raw = analogRead(ThermocouplePin);
@@ -128,7 +124,7 @@ void loop()
 
   // Switch to conservative mode when the temp gap narrows
   double gap = abs(Setpoint - Input); //distance away from setpoint
-  if (gap < gapdeg)
+  if (gap < gapDeg)
   { //we're close to setpoint, use conservative tuning parameters
     myPID.SetTunings(consKp, consKi, consKd);
   }
@@ -147,16 +143,29 @@ void loop()
     windowStartTime += WindowSize;
   }
 
-  // Calculate the number of milliseconds that have passed in the current PWM cycle.
-  // If that is less than the Output value the relay is turned ON.
-  // If that is greater than (or equal to) the Output value the relay is turned OFF.
-  if (Output > (now - windowStartTime))
-    digitalWrite(RelayPin, HIGH);
-  else
+  // Calculate the number of running minutes
+  timeNowMins = millis() / 60000.0;
+
+  // If more than maxRunTime minutes has elapsed, turn the boiler off
+  if ( timeNowMins >= maxRunTime )
+  {
     digitalWrite(RelayPin, LOW);
+    myPID.SetMode(MANUAL);
+  }
+  else
+  {
+    // Calculate the number of milliseconds that have passed in the current PWM cycle.
+    // If that is less than the Output value the relay is turned ON
+    // If that is greater than (or equal to) the Output value the relay is turned OFF.
+    if ( Output > (now - windowStartTime) )
+      digitalWrite(RelayPin, HIGH);
+    else
+      digitalWrite(RelayPin, LOW);
+  }
 
   // Output some data to serial to see what's happening
-  if (now - lastMessage > serialPing) { //If it has been long enough give us some info on serial
+  if (now - lastMessage > serialPing)
+  {
     Serial.print("Setpoint: ");
     Serial.print(Setpoint);
     Serial.print(",");
