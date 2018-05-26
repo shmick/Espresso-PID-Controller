@@ -4,6 +4,7 @@
   Code samples used from the following:
   PID Library: https://github.com/br3ttb/Arduino-PID-Library
   PID Lab: https://www.pdx.edu/nanogroup/sites/www.pdx.edu.nanogroup/files/2013_Arduino%20PID%20Lab_0.pdf
+  Smoothing: https://www.arduino.cc/en/Tutorial/Smoothing
 
   Hardware:
   HeaterMeter v4.2 PCB: https://github.com/CapnBry/HeaterMeter/wiki/HeaterMeter-4.2-Hardware
@@ -13,7 +14,7 @@
 #include <PID_v1.h>
 
 // HM Pins
-// TC = ADC5 / AnalogInput 5
+// TC = ADC 5
 // Blower/Relay = Digital Pin 3
 
 #define ThermocouplePin 5
@@ -45,6 +46,13 @@ PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
 int WindowSize = 5000;
 unsigned long windowStartTime;
 
+//Define the info needed for the temperature averaging
+const int numReadings = 128;
+int readings[numReadings];      // the readings from the analog input
+int readIndex = 0;              // the index of the current reading
+int total = 0;                  // the running total
+int average = 0;                // the average
+
 // Communication setup
 const long serialPing = 500; //This determines how often we ping our loop
 // Serial pingback interval in milliseconds
@@ -60,7 +68,7 @@ void setup()
   Serial.begin(38400); //Start a serial session
   lastMessage = millis(); // timestamp
 
-  // Set the Relay to output mode and ensure the relay off
+  // Set the Relay to output mode and ensure the relay if off
   pinMode(RelayPin, OUTPUT);
   digitalWrite(RelayPin, LOW);
 
@@ -71,6 +79,12 @@ void setup()
 
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
+
+  // initialize all the readings to 0:
+  for (int thisReading = 0; thisReading < numReadings; thisReading++) {
+    readings[thisReading] = 0;
+  }
+
 }
 
 void loop()
@@ -78,14 +92,35 @@ void loop()
   //Keep track of time
   now = millis();
 
-  // Read the temps from the thermocouple
+
+  //get a non averaged reading
   int raw = analogRead(ThermocouplePin);
-  float Vout = raw * (3.3 / 1023.0);
+
+  // subtract the last reading:
+  total = total - readings[readIndex];
+  // Read the temps from the thermocouple
+  readings[readIndex] = analogRead(ThermocouplePin);
+  // add the reading to the total:
+  total = total + readings[readIndex];
+  // advance to the next position in the array:
+  readIndex = readIndex + 1;
+
+  // if we're at the end of the array...
+  if (readIndex >= numReadings) {
+    // ...wrap around to the beginning:
+    readIndex = 0;
+  }
+
+  // calculate the average:
+  average = total / numReadings;
+
+  // HeaterMeter board runs at 3.3v
+  // AD8495 Thermocouple is approx 5 mV/°C
+  float Vout = average * (3.3 / 1023.0);
   Input = (Vout) / 0.005;
-  // Input = (Vout - 1.25) / 0.005;
 
   /* TEST ONLY
-    if (now - lastMessage2 > 1000) { //If it has been long enough give us some info on serial
+    if (now - lastMessage2 > 1000) {
       Input = Input + 0.5;
       lastMessage2 = now; //update the time stamp.
     }
@@ -122,13 +157,19 @@ void loop()
 
   // Output some data to serial to see what's happening
   if (now - lastMessage > serialPing) { //If it has been long enough give us some info on serial
-    Serial.print("Setpoint = ");
+    Serial.print("Setpoint: ");
     Serial.print(Setpoint);
-    Serial.print(" Input = ");
+    Serial.print(",");
+    Serial.print(" Input: ");
     Serial.print(Input);
-    Serial.print(" Output = ");
+    Serial.print(",");
+    Serial.print(" Output: ");
     Serial.print(Output);
-    Serial.print(" Raw = ");
+    Serial.print(",");
+    Serial.print(" Avg: ");
+    Serial.print(average);
+    Serial.print(",");
+    Serial.print(" Raw: ");
     Serial.print(raw);
     Serial.print("\n");
     lastMessage = now; //update the time stamp.
