@@ -25,6 +25,10 @@ int timeNowMins;
 #define ThermocouplePin 5
 #define RelayPin 3
 
+float Vtc;
+double RawInput;
+
+
 //Define the aggressive Tuning Parameters
 const double aggKp = 40;
 const double aggKi = 0.5;
@@ -50,6 +54,19 @@ int readings[numReadings];      // the readings from the analog input
 int readIndex = 0;              // the index of the current reading
 int total = 0;                  // the running total
 int average = 0;                // the average
+
+// Corrected temperature readings for a K-type thermocouple 
+// Coefficient values for 0C - 500C / 0mV - 20.644mV
+const double c0 = 0.000000E+00;
+const double c1 = 2.508355E+01;
+const double c2 = 7.860106E-02;
+const double c3 = -2.503131E-01;
+const double c4 = 8.315270E-02;
+const double c5 = -1.228034E-02;
+const double c6 = 9.804036E-04;
+const double c7 = -4.413030E-05;
+const double c8 = 1.057734E-06;
+const double c9 = -1.052755E-08;
 
 // Communication setup
 const long serialPing = 500; //This determines how often we ping our loop
@@ -111,9 +128,28 @@ void loop()
   average = total / numReadings;
 
   // HeaterMeter board runs at 3.3v
-  // AD8495 Thermocouple is approx 5 mV/°C
   float Vout = average * (3.3 / 1023.0);
-  Input = (Vout) / 0.005;
+
+  // AD8495 Thermocouple is approx 5 mV/°C
+  // Make a linear temp calc so we can compare is against the calculated temp
+  RawInput = (Vout) / 0.005;
+
+  // To accommodate the nonlinear behavior of the thermocouple, each amplifier has a different gain
+  // so that the 5 mV/°C is accurately maintained for a given temperature measurement range.
+  // The AD8495 and AD8497 (K type) have an instrumentation amplifier with a gain of 122.4.
+  Vtc = ((Vout * 1000) - 1.25) / 122.4;
+
+  // Use the corrected temperature readings for a K-type thermocouple in the 0-500°C range
+  Input = c0 + 
+          c1 * Vtc + 
+          c2 * pow(Vtc,2) + 
+          c3 * pow(Vtc,3) + 
+          c4 * pow(Vtc,4) + 
+          c5 * pow(Vtc,5) + 
+          c6 * pow(Vtc,6) + 
+          c7 * pow(Vtc,7) + 
+          c8 * pow(Vtc,8) + 
+          c9 * pow(Vtc,9);
 
   /* TEST ONLY
     if (now - lastMessage2 > 1000) {
@@ -171,6 +207,9 @@ void loop()
     Serial.print(",");
     Serial.print(" Input: ");
     Serial.print(Input);
+    Serial.print(",");
+    Serial.print(" Raw Input: ");
+    Serial.print(RawInput);
     Serial.print(",");
     Serial.print(" Output: ");
     Serial.print(Output);
