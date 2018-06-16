@@ -13,33 +13,49 @@
 
 #include <PID_v1.h>
 
+// *****************************************
+// * Config options that you can customize *
+// *****************************************
+
 // HM Pins
 // TC = ADC 5
 // Blower/Relay = Digital Pin 3
 #define ThermocouplePin 5
 #define RelayPin 3
 
+
 // Board voltage 3.3v or 5v Arduino
-// Best to measure between GND and VCC for most accurate
+// Best to measure between GND and VCC for most accurate readings
 const double brdVolts = 3.30;
 
 // After powering on, how many minutes until we force the boiler to power down
 // Turning the machine off and on again will reset the timer
 const int maxRunTime = 45;
-int timeNowMins;
 
 // Anything below this % gets full power
 const int FullPwrPct = 85;
-int SetpointPct;
 
 // Define the setpoint and initial parameters
 const double Setpoint = 105;
-double Input, Output;
 
 //Define the PID tuning Parameters
 const double Kp = 8.0;
-const double Ki = 0.15  ;
-const double Kd = 1.0;
+const double Ki = 0.15;
+const double Kd = 0;
+
+// PWM Window in milliseconds
+const int WindowSize = 500;
+
+// ***********************************************************
+// * There should be no need to tweak many things below here *
+// ***********************************************************
+
+// Used for max time shutdown
+int timeNowMins;
+// Used with FullPwrPct for initial startup
+int SetpointPct;
+// 
+double Input, Output;
 
 //Needed to display current values on serial output
 double currKp;
@@ -48,7 +64,7 @@ double currKd;
 
 // Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
-const int WindowSize = 500;
+//PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 unsigned long windowStartTime;
 
 //Define the info needed for the temperature averaging
@@ -159,7 +175,7 @@ void loop()
 
   // Calculate the number of running minutes
   timeNowMins = now / 60000.0;
-  
+
   // If more than maxRunTime minutes has elapsed, turn the boiler off
   // and dont perform any other PID functions
   if ( timeNowMins >= maxRunTime )
@@ -172,7 +188,7 @@ void loop()
   {
     SetpointPct = Input / Setpoint * 100;
     // Don't control the SSR via PID until we're above FullPwrPct (80-90%)
-    if (SetpointPct < FullPwrPct )
+    if ( (SetpointPct < FullPwrPct ) && Output < 1 )
     {
       myPID.SetMode(MANUAL);
       digitalWrite(RelayPin, HIGH);
@@ -180,12 +196,13 @@ void loop()
     else
     {
       // Compute the PID values
+      myPID.SetMode(AUTOMATIC);
       myPID.Compute();
       // Calculate the number of milliseconds that have passed in the current PWM cycle.
       // If that is less than the Output value the relay is turned ON
       // If that is greater than (or equal to) the Output value the relay is turned OFF.
       // To reduce relay "flickering" wait till output is at least 50 before turning on
-      if ( (Output > (now - windowStartTime)) && ( Output > 50 ) )
+      if ( (Output > (now - windowStartTime)) && ( Output > 0 ) )
         digitalWrite(RelayPin, HIGH);
       else
         digitalWrite(RelayPin, LOW);
@@ -200,13 +217,13 @@ void loop()
     currKd = myPID.GetKd();
 
     Serial.print("Setpoint: ");
-    Serial.print(Setpoint);
+    Serial.print(Setpoint, 0);
     Serial.print(",");
     Serial.print(" Input: ");
-    Serial.print(Input);
+    Serial.print(Input, 1);
     Serial.print(",");
     Serial.print(" Output: ");
-    Serial.print(Output);
+    Serial.print(Output, 0);
     Serial.print(",");
     Serial.print(" Kp: ");
     Serial.print(currKp);
