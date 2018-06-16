@@ -249,7 +249,7 @@ void loop()
     }
     else
     {
-      Serial.print(" Input: ");
+      Serial.print("Input: ");
       Serial.print(Input, 1);
       Serial.print(",");
       Serial.print(" Mode: off");
