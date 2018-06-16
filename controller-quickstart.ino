@@ -54,13 +54,16 @@ const int WindowSize = 500;
 int timeNowMins;
 // Used with FullPwrPct for initial startup
 int SetpointPct;
-// 
+//
 double Input, Output;
 
 //Needed to display current values on serial output
 double currKp;
 double currKi;
 double currKd;
+
+// 0 = off, 1 = on
+int operMode = 1;
 
 // Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
@@ -111,12 +114,14 @@ void setup()
   // PID settings
   windowStartTime = millis();
   myPID.SetOutputLimits(0, WindowSize);
+  myPID.SetSampleTime(100);
 
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
 
   // initialize all the readings to 0:
-  for (int thisReading = 0; thisReading < numReadings; thisReading++) {
+  for (int thisReading = 0; thisReading < numReadings; thisReading++)
+  {
     readings[thisReading] = 0;
   }
 }
@@ -136,7 +141,8 @@ void loop()
   readIndex = readIndex + 1;
 
   // if we're at the end of the array...
-  if (readIndex >= numReadings) {
+  if (readIndex >= numReadings)
+  {
     // ...wrap around to the beginning:
     readIndex = 0;
   }
@@ -183,6 +189,7 @@ void loop()
     digitalWrite(RelayPin, LOW);
     myPID.SetTunings(0, 0, 0);
     myPID.SetMode(MANUAL);
+    operMode = 0;
   }
   else
   {
@@ -203,37 +210,51 @@ void loop()
       // If that is greater than (or equal to) the Output value the relay is turned OFF.
       // To reduce relay "flickering" wait till output is at least 50 before turning on
       if ( (Output > (now - windowStartTime)) && ( Output > 0 ) )
+      {
         digitalWrite(RelayPin, HIGH);
+      }
       else
+      {
         digitalWrite(RelayPin, LOW);
+      }
     }
   }
 
   // Output some data to serial to see what's happening
   if (now - lastMessage > serialPing)
   {
-    currKp = myPID.GetKp();
-    currKi = myPID.GetKi();
-    currKd = myPID.GetKd();
-
-    Serial.print("Setpoint: ");
-    Serial.print(Setpoint, 0);
-    Serial.print(",");
-    Serial.print(" Input: ");
-    Serial.print(Input, 1);
-    Serial.print(",");
-    Serial.print(" Output: ");
-    Serial.print(Output, 0);
-    Serial.print(",");
-    Serial.print(" Kp: ");
-    Serial.print(currKp);
-    Serial.print(",");
-    Serial.print(" Ki: ");
-    Serial.print(currKi);
-    Serial.print(",");
-    Serial.print(" Kd: ");
-    Serial.print(currKd);
-    Serial.print("\n");
+    if ( operMode == 1 )
+    {
+      currKp = myPID.GetKp();
+      currKi = myPID.GetKi();
+      currKd = myPID.GetKd();
+      Serial.print("Setpoint: ");
+      Serial.print(Setpoint, 0);
+      Serial.print(",");
+      Serial.print(" Input: ");
+      Serial.print(Input, 1);
+      Serial.print(",");
+      Serial.print(" Output: ");
+      Serial.print(Output, 0);
+      Serial.print(",");
+      Serial.print(" Kp: ");
+      Serial.print(currKp);
+      Serial.print(",");
+      Serial.print(" Ki: ");
+      Serial.print(currKi);
+      Serial.print(",");
+      Serial.print(" Kd: ");
+      Serial.print(currKd);
+      Serial.print("\n");
+    }
+    else
+    {
+      Serial.print(" Input: ");
+      Serial.print(Input, 1);
+      Serial.print(",");
+      Serial.print(" Mode: off");
+      Serial.print("\n");
+    }
     lastMessage = now; //update the time stamp.
   }
 }
