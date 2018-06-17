@@ -28,23 +28,28 @@
 // Best to measure between GND and VCC for most accurate readings
 const double brdVolts = 3.30;
 
+// Vref for AD8495 board. 0 for ground
+const double Vref = 0;
+
 // After powering on, how many minutes until we force the boiler to power down
 // Turning the machine off and on again will reset the timer
 const int maxRunTime = 45;
 
 // Anything below this % gets full power
-const int FullPwrPct = 85;
+const int FullPwrPct = 90;
 
 // Define the setpoint and initial parameters
 const double Setpoint = 105;
 
 //Define the PID tuning Parameters
-const double Kp = 8.0;
-const double Ki = 0.15;
-const double Kd = 0;
+const double Kp = 6.00;
+const double Ki = 0.02;
+const double Kd = 0.00;
 
 // PWM Window in milliseconds
-const int WindowSize = 500;
+// SSR can cycle 120 times per second = 8.333ms per cycle
+// 4167 = half of 8333
+const int WindowSize = 4167;
 
 // ***********************************************************
 // * There should be no need to tweak many things below here *
@@ -57,17 +62,18 @@ int SetpointPct;
 //
 double Input, Output;
 
+double PWMOutput;
+
 //Needed to display current values on serial output
-double currKp;
-double currKi;
-double currKd;
+// double currKp;
+// double currKi;
+// double currKd;
 
 // 0 = off, 1 = on
 int operMode = 1;
 
 // Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
-//PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 unsigned long windowStartTime;
 
 //Define the info needed for the temperature averaging
@@ -95,7 +101,7 @@ const double c8 = 1.057734E-06;
 const double c9 = -1.052755E-08;
 
 // Communication setup
-const long serialPing = 500; //This determines how often we ping our loop
+const long serialPing = 1000; //This determines how often we ping our loop
 // Serial pingback interval in milliseconds
 unsigned long now = 0; //This variable is used to keep track of time
 // placehodler for current timestamp
@@ -113,8 +119,7 @@ void setup()
 
   // PID settings
   windowStartTime = millis();
-  myPID.SetOutputLimits(0, WindowSize);
-  myPID.SetSampleTime(100);
+  myPID.SetOutputLimits(0, 100);
 
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
@@ -159,7 +164,7 @@ void loop()
   // To accommodate the nonlinear behavior of the thermocouple, each amplifier has a different gain
   // so that the 5 mV/°C is accurately maintained for a given temperature measurement range.
   // The AD8495 and AD8497 (K type) have an instrumentation amplifier with a gain of 122.4.
-  Vtc = ((Vout * 1000) - 1.25) / 122.4;
+  Vtc = ((Vout * 1000) - Vref - 1.25) / 122.4;
 
   // Use the corrected temperature readings for a K-type thermocouple in the 0-500°C range
   Input = c0 +
@@ -173,12 +178,6 @@ void loop()
           c8 * pow(Vtc, 8) +
           c9 * pow(Vtc, 9);
 
-  // Starts a new PWM cycle every WindowSize milliseconds
-  if (now - windowStartTime > WindowSize)
-  { //time to shift the Relay Window
-    windowStartTime += WindowSize;
-  }
-
   // Calculate the number of running minutes
   timeNowMins = now / 60000.0;
 
@@ -190,31 +189,33 @@ void loop()
     myPID.SetTunings(0, 0, 0);
     myPID.SetMode(MANUAL);
     operMode = 0;
-  }
-  else
-  {
+  } else {
     SetpointPct = Input / Setpoint * 100;
     // Don't control the SSR via PID until we're above FullPwrPct (80-90%)
     if ( (SetpointPct < FullPwrPct ) && Output < 1 )
     {
       myPID.SetMode(MANUAL);
       digitalWrite(RelayPin, HIGH);
-    }
-    else
-    {
+    } else {
       // Compute the PID values
       myPID.SetMode(AUTOMATIC);
       myPID.Compute();
+
+      PWMOutput = Output * (WindowSize / 100);
+
+      // Starts a new PWM cycle every WindowSize milliseconds
+      if (now - windowStartTime > WindowSize)
+      { //time to shift the Relay Window
+        windowStartTime += WindowSize;
+      }
+
       // Calculate the number of milliseconds that have passed in the current PWM cycle.
       // If that is less than the Output value the relay is turned ON
       // If that is greater than (or equal to) the Output value the relay is turned OFF.
-      // To reduce relay "flickering" wait till output is at least 50 before turning on
-      if ( (Output > (now - windowStartTime)) && ( Output > 0 ) )
+      if (PWMOutput > (now - windowStartTime))
       {
         digitalWrite(RelayPin, HIGH);
-      }
-      else
-      {
+      } else {
         digitalWrite(RelayPin, LOW);
       }
     }
@@ -225,30 +226,22 @@ void loop()
   {
     if ( operMode == 1 )
     {
-      currKp = myPID.GetKp();
-      currKi = myPID.GetKi();
-      currKd = myPID.GetKd();
-      Serial.print("Setpoint: ");
+//      currKp = myPID.GetKp();
+//      currKi = myPID.GetKi();
+//      currKd = myPID.GetKd();
+      Serial.print("SP: ");
       Serial.print(Setpoint, 0);
       Serial.print(",");
       Serial.print(" Input: ");
       Serial.print(Input, 1);
       Serial.print(",");
       Serial.print(" Output: ");
-      Serial.print(Output, 0);
+      Serial.print(Output, 1);
       Serial.print(",");
-      Serial.print(" Kp: ");
-      Serial.print(currKp);
-      Serial.print(",");
-      Serial.print(" Ki: ");
-      Serial.print(currKi);
-      Serial.print(",");
-      Serial.print(" Kd: ");
-      Serial.print(currKd);
+      Serial.print(" PWMOut: ");
+      Serial.print(PWMOutput, 1);
       Serial.print("\n");
-    }
-    else
-    {
+    } else {
       Serial.print("Input: ");
       Serial.print(Input, 1);
       Serial.print(",");
