@@ -26,12 +26,11 @@
 #define ThermocouplePin 1
 #define RelayPin 2
 
-// Board voltage 3.3v or 5v Arduino
+// Board voltage 3.3v or 5v
 // Best to measure between GND and VCC for most accurate readings
 const double brdVolts = 5.0;
 
-// Vref for AD8495 board
-// 1.23v = 1230 mv
+// Vref for AD8495 board (in millivolts)
 const int Vref = 1230;
 
 // After powering on, how many minutes until we force the boiler to power down
@@ -41,10 +40,10 @@ const int maxRunTime = 45;
 // Anything below this % gets full power
 const int FullPwrPct = 90.0;
 
-// Define the setpoint and initial parameters
+// Define the PID setpoint
 const double Setpoint = 105;
 
-//Define the PID tuning Parameters
+// Define the PID tuning Parameters
 const double Kp = 6.00;
 const double Ki = 0.015;
 const double Kd = 0.00;
@@ -61,7 +60,8 @@ const int WindowSize = 3500;
 int timeNowMins;
 // Used with FullPwrPct for initial startup
 int SetpointPct;
-//
+
+// PID variables
 double Input, Output;
 
 double PWMOutput;
@@ -73,7 +73,7 @@ int operMode = 1;
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
 unsigned long windowStartTime;
 
-//Define the info needed for the temperature averaging
+// Define the info needed for the temperature averaging
 const int numReadings = 32;
 int readings[numReadings];      // the readings from the analog input
 int readIndex = 0;              // the index of the current reading
@@ -81,8 +81,8 @@ int total = 0;                  // the running total
 int average = 0;                // the average
 
 // Thermocouple variables
+float Vout;
 float Vtc;
-//double RawInput;
 
 // Corrected temperature readings for a K-type thermocouple
 // Coefficient values for 0C - 500C / 0mV - 20.644mV
@@ -145,11 +145,9 @@ void setup()
 
 } // end of setup()
 
-void loop()
-{
-  //Keep track of time
-  now = millis();
 
+void readTemps(void)
+{
   // subtract the last reading:
   total = total - readings[readIndex];
   // Read the temps from the thermocouple
@@ -169,7 +167,7 @@ void loop()
   // calculate the average:
   average = total / numReadings;
 
-  float Vout = average * (brdVolts / 1023.0);
+  Vout = average * (brdVolts / 1023.0);
 
   // To accommodate the nonlinear behavior of the thermocouple, each amplifier has a different gain
   // so that the 5 mV/°C is accurately maintained for a given temperature measurement range.
@@ -188,7 +186,10 @@ void loop()
           c7 * pow(Vtc, 7) +
           c8 * pow(Vtc, 8) +
           c9 * pow(Vtc, 9);
+}
 
+void relayControl(void)
+{
   // Calculate the number of running minutes
   timeNowMins = now / 60000.0;
 
@@ -232,8 +233,49 @@ void loop()
       }
     }
   }
+}
 
-/*
+void displayStats(void)
+{
+  unsigned long currentOLEDMillis = now;
+
+  if (currentOLEDMillis - previousOLEDMillis > OLEDinterval) {
+    // save the last time you wrote to the OLED display
+    previousOLEDMillis = currentOLEDMillis;
+
+    // have to wipe the buffer before writing anything new
+    display.clearDisplay();
+
+    if ( operMode == 1 )
+    {
+      display.setFont(&FreeSans9pt7b);
+      display.setCursor(0, 22);
+      // Dont add a decimal place for 100 or 0
+      if ( (Output >= 100) || (Output == 0) )
+      {
+        display.print(Output, 0);
+      }
+      else
+      {
+        display.print(Output, 1);
+      }
+      display.setFont(&FreeSerifBold18pt7b);
+      display.setCursor(42, 28);
+      display.print(Input, 1);
+    } 
+    else if ( operMode == 0 ) 
+    {
+      display.setFont(&FreeSerifBold18pt7b);
+      display.setCursor(28, 28);
+      display.print("OFF");
+    }
+    // Do the needful!
+    display.display();
+  }
+}
+
+void displaySerial(void)
+{
   // Output some data to serial to see what's happening
   if (now - lastMessage > serialPing)
   {
@@ -266,36 +308,16 @@ void loop()
     }
     lastMessage = now; //update the time stamp.
   }
-*/
+}
 
-  unsigned long currentOLEDMillis = now;
-  
-  if (currentOLEDMillis - previousOLEDMillis > OLEDinterval) {
-    // save the last time you wrote to the OLED display
-    previousOLEDMillis = currentOLEDMillis;
+void loop()
+{
+  //Keep track of time
+  now = millis();
 
-    // have to wipe the buffer before writing anything new
-    display.clearDisplay();
+  readTemps();
+  relayControl();
+  displayStats();
+  //displaySerial();
 
-    if ( operMode == 1 )
-    {
-      display.setFont(&FreeSans9pt7b);
-      display.setCursor(0, 22);
-      if ( (Output >= 100) || (Output == 0) ) 
-      display.print(Output, 0);
-      else
-      display.print(Output, 1);
-  
-      display.setFont(&FreeSerifBold18pt7b);
-      display.setCursor(42, 28);
-      display.print(Input, 1);
-    } else {
-      display.setFont(&FreeSerifBold18pt7b);
-      display.setCursor(28, 28);
-      display.print("OFF");
-    }
-    // Do the needful!
-    display.display();
-  }
-  
 } // End of loop()
