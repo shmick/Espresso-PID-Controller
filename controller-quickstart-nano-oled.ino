@@ -20,9 +20,6 @@
 // * Config options that you can customize *
 // *****************************************
 
-// HM Pins
-// TC = ADC 5
-// Blower/Relay = Digital Pin 3
 #define ThermocouplePin 1
 #define RelayPin 2
 
@@ -31,11 +28,16 @@
 const double brdVolts = 5.0;
 
 // Vref for AD8495 board (in millivolts)
+// Set to 0 if your reference voltage is grounded
 const int Vref = 1230;
 
 // After powering on, how many minutes until we force the boiler to power down
 // Turning the machine off and on again will reset the timer
 const int maxRunTime = 45;
+
+// Turn the display off after 90 minutes
+//
+const int maxDisplayMins = 90;
 
 // Anything below this % gets full power
 const int FullPwrPct = 90.0;
@@ -49,7 +51,7 @@ const double Ki = 0.015;
 const double Kd = 0.00;
 
 // PWM Window in milliseconds
-// SSR can cycle 120 times per second = 8.333ms per cycle
+// SSR can only cycle AC 120 times per second ( 8.333ms per zero crossing )
 const int WindowSize = 3500;
 
 // ***********************************************************
@@ -58,6 +60,8 @@ const int WindowSize = 3500;
 
 // Used for max time shutdown
 int timeNowMins;
+
+
 // Used with FullPwrPct for initial startup
 int SetpointPct;
 
@@ -66,8 +70,8 @@ double Input, Output;
 
 double PWMOutput;
 
-// 0 = off, 1 = on
-int operMode = 1;
+// Default to being ON
+bool operMode = true;
 
 // Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
@@ -83,6 +87,7 @@ int average = 0;                // the average
 // Thermocouple variables
 float Vout;
 float Vtc;
+float Vbits;
 
 // Corrected temperature readings for a K-type thermocouple
 // Coefficient values for 0C - 500C / 0mV - 20.644mV
@@ -97,10 +102,12 @@ const double c7 = -4.413030E-05;
 const double c8 = 1.057734E-06;
 const double c9 = -1.052755E-08;
 
+unsigned long now = 0; //This variable is used to keep track of time
+
 // Communication setup
 const long serialPing = 1000; //This determines how often we ping our loop
 // Serial pingback interval in milliseconds
-unsigned long now = 0; //This variable is used to keep track of time
+
 // placehodler for current timestamp
 unsigned long lastMessage = 0; //This keeps track of when our loop last spoke to serial
 
@@ -113,22 +120,28 @@ Adafruit_SSD1306 display(OLED_RESET);
 long previousOLEDMillis = 0;            // will store last time OLED was updated
 const int OLEDinterval = 250;           // interval at which to write new data to the OLED
 
+// Set to true to enable serial port output
+bool SerialOut = false;
+
 void setup()
 {
-  // Setup Serial
-  // Serial.begin(38400); //Start a serial session
-  // lastMessage = millis(); // timestamp
+  if ( SerialOut == true )
+  {
+    //Setup Serial
+    Serial.begin(38400); //Start a serial session
+    lastMessage = now; // timestamp
+  }
 
   // Set the Relay to output mode and ensure the relay if off
   pinMode(RelayPin, OUTPUT);
   digitalWrite(RelayPin, LOW);
 
   // PID settings
-  windowStartTime = millis();
+  windowStartTime = now;
   myPID.SetOutputLimits(0, 100);
 
-  //turn the PID on
-  //  myPID.SetMode(AUTOMATIC);
+  // Do initial calc of brdVolts / 1023
+  Vbits = brdVolts / 1023;
 
   // initialize all the readings to 0:
   for (int thisReading = 0; thisReading < numReadings; thisReading++)
@@ -139,12 +152,11 @@ void setup()
   // Setup the OLED display
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
   display.clearDisplay();
-  display.display();
   display.setTextColor(WHITE);
   display.setTextSize(1);
+  display.display();
 
 } // end of setup()
-
 
 void readTemps(void)
 {
@@ -167,11 +179,11 @@ void readTemps(void)
   // calculate the average:
   average = total / numReadings;
 
-  Vout = average * (brdVolts / 1023.0);
+  // This should match the output voltage on the Out pin of the AD8945
+  Vout = average * Vbits;
 
-  // To accommodate the nonlinear behavior of the thermocouple, each amplifier has a different gain
-  // so that the 5 mV/°C is accurately maintained for a given temperature measurement range.
-  // The AD8495 and AD8497 (K type) have an instrumentation amplifier with a gain of 122.4.
+  // Based on Analog Devices AN-1087
+  // Convert the AD8495 output back to millivolts so we can perform the NIST calc
   Vtc = ((Vout * 1000) - Vref - 1.25) / 122.4;
 
   // Use the NIST corrected temperature readings for a K-type thermocouple in the 0-500°C range
@@ -200,7 +212,7 @@ void relayControl(void)
     digitalWrite(RelayPin, LOW);
     myPID.SetTunings(0, 0, 0);
     myPID.SetMode(MANUAL);
-    operMode = 0;
+    operMode = false;
   } else {
     SetpointPct = Input / Setpoint * 100;
     // Don't control the SSR via PID until we're above FullPwrPct (80-90%)
@@ -246,7 +258,7 @@ void displayStats(void)
     // have to wipe the buffer before writing anything new
     display.clearDisplay();
 
-    if ( operMode == 1 )
+    if ( operMode == true )
     {
       display.setFont(&FreeSans9pt7b);
       display.setCursor(0, 22);
@@ -262,12 +274,20 @@ void displayStats(void)
       display.setFont(&FreeSerifBold18pt7b);
       display.setCursor(42, 28);
       display.print(Input, 1);
-    } 
-    else if ( operMode == 0 ) 
+    }
+    else if ( operMode == false )
     {
-      display.setFont(&FreeSerifBold18pt7b);
-      display.setCursor(28, 28);
-      display.print("OFF");
+      // After maxDisplayMins minutes turn off the display
+      if ( timeNowMins >= maxDisplayMins )
+      {
+        display.clearDisplay();
+      }
+      else
+      {
+        display.setFont(&FreeSerifBold18pt7b);
+        display.setCursor(28, 28);
+        display.print("OFF");
+      }
     }
     // Do the needful!
     display.display();
@@ -279,7 +299,7 @@ void displaySerial(void)
   // Output some data to serial to see what's happening
   if (now - lastMessage > serialPing)
   {
-    if ( operMode == 1 )
+    if ( operMode == true )
     {
       Serial.print("Time: ");
       Serial.print(now / 1000);
@@ -318,6 +338,9 @@ void loop()
   readTemps();
   relayControl();
   displayStats();
-  //displaySerial();
+  if ( SerialOut == true )
+  {
+    displaySerial();
+  }
 
 } // End of loop()
