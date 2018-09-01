@@ -39,20 +39,23 @@ const int maxRunTime = 45;
 //
 const int maxDisplayMins = 90;
 
-// Anything below this % gets full power
-const int FullPwrPct = 90.0;
+// Anything below this % gets full power to allow the boiler to come up to temp faster.
+//const int FullPwrPct = 90.0;
+const int FullPwrPct = 1.0;
 
 // Define the PID setpoint
-const double Setpoint = 105;
+double Setpoint = 105;
 
+// Increasing Kp as P_ON_M used Kp similar to Kd 
 // Define the PID tuning Parameters
-const double Kp = 6.00;
-const double Ki = 0.015;
-const double Kd = 0.00;
+double Kp = 6.0;
+double Ki = 0.6;
+double Kd = 2.5;
 
 // PWM Window in milliseconds
 // SSR can only cycle AC 120 times per second ( 8.333ms per zero crossing )
-const int WindowSize = 3500;
+const int WindowSize = 1000;
+//const int WindowSize = 5000;
 
 // ***********************************************************
 // * There should be no need to tweak many things below here *
@@ -60,7 +63,6 @@ const int WindowSize = 3500;
 
 // Used for max time shutdown
 int timeNowMins;
-
 
 // Used with FullPwrPct for initial startup
 int SetpointPct;
@@ -75,6 +77,7 @@ bool operMode = true;
 
 // Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
+//PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 unsigned long windowStartTime;
 
 // Define the info needed for the temperature averaging
@@ -188,16 +191,16 @@ void readTemps(void)
 
   // Use the NIST corrected temperature readings for a K-type thermocouple in the 0-500°C range
   // https://srdata.nist.gov/its90/type_k/kcoefficients_inverse.html
-  Input = c0 +
-          c1 * Vtc +
-          c2 * pow(Vtc, 2) +
-          c3 * pow(Vtc, 3) +
-          c4 * pow(Vtc, 4) +
-          c5 * pow(Vtc, 5) +
-          c6 * pow(Vtc, 6) +
-          c7 * pow(Vtc, 7) +
-          c8 * pow(Vtc, 8) +
-          c9 * pow(Vtc, 9);
+  Input = c0
+          + c1 * Vtc
+          + c2 * pow(Vtc, 2)
+          + c3 * pow(Vtc, 3)
+          + c4 * pow(Vtc, 4)
+          + c5 * pow(Vtc, 5)
+          + c6 * pow(Vtc, 6)
+          + c7 * pow(Vtc, 7)
+          + c8 * pow(Vtc, 8)
+          + c9 * pow(Vtc, 9);
 }
 
 void relayControl(void)
@@ -216,18 +219,20 @@ void relayControl(void)
   } else {
     SetpointPct = Input / Setpoint * 100;
     // Don't control the SSR via PID until we're above FullPwrPct (80-90%)
-    if ( (SetpointPct < FullPwrPct ) && PWMOutput < 1 )
+    //if ( (SetpointPct < FullPwrPct ) && PWMOutput < 1 )
+    if (SetpointPct < FullPwrPct )
       //    if (SetpointPct > FullPwrPct )
     {
       myPID.SetMode(MANUAL);
-      digitalWrite(RelayPin, HIGH);
+      //digitalWrite(RelayPin, HIGH);
+      Output = 50;
     } else {
       // Compute the PID values
       myPID.SetMode(AUTOMATIC);
       myPID.Compute();
+    }
 
       PWMOutput = Output * (WindowSize / 100.00);
-
       // Starts a new PWM cycle every WindowSize milliseconds
       if (now - windowStartTime > WindowSize)
       { //time to shift the Relay Window
@@ -243,7 +248,6 @@ void relayControl(void)
       } else {
         digitalWrite(RelayPin, LOW);
       }
-    }
   }
 }
 
