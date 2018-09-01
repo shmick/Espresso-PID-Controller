@@ -46,16 +46,17 @@ const int FullPwrPct = 1.0;
 // Define the PID setpoint
 double Setpoint = 105;
 
-// Increasing Kp as P_ON_M used Kp similar to Kd 
 // Define the PID tuning Parameters
 double Kp = 6.0;
 double Ki = 0.6;
 double Kd = 2.5;
 
 // PWM Window in milliseconds
-// SSR can only cycle AC 120 times per second ( 8.333ms per zero crossing )
 const int WindowSize = 1000;
-//const int WindowSize = 5000;
+
+// Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
+PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
+//PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 
 // ***********************************************************
 // * There should be no need to tweak many things below here *
@@ -75,9 +76,6 @@ double PWMOutput;
 // Default to being ON
 bool operMode = true;
 
-// Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
-PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
-//PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 unsigned long windowStartTime;
 
 // Define the info needed for the temperature averaging
