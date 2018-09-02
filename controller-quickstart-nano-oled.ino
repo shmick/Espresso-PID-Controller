@@ -47,16 +47,13 @@ const int FullPwrPct = 1.0;
 double Setpoint = 105;
 
 // Define the PID tuning Parameters
-double Kp = 6.0;
-double Ki = 0.6;
+double Kp = 7.0;
+double Ki = 0.5;
 double Kd = 2.5;
 
 // PWM Window in milliseconds
 const int WindowSize = 1000;
 
-// Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
-PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
-//PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 
 // ***********************************************************
 // * There should be no need to tweak many things below here *
@@ -70,6 +67,9 @@ int SetpointPct;
 
 // PID variables
 double Input, Output;
+
+// Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
+PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
 
 double PWMOutput;
 
@@ -140,6 +140,7 @@ void setup()
   // PID settings
   windowStartTime = now;
   myPID.SetOutputLimits(0, 100);
+  myPID.SetSampleTime(50);
 
   // Do initial calc of brdVolts / 1023
   Vbits = brdVolts / 1023;
