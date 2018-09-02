@@ -6,7 +6,7 @@ connected to an Arduino controller that controls a Solid State Relay (SSR) to co
 the espresso machine.
 
 ## Parts used
-##### Inexpensive Arduino Nano v3 from eBay/Amazon
-##### K Type thermocouple from a QIDI 3D printer with M4 threads from [eBay](https://www.ebay.ca/itm/QIDI-TECHNOLOGY-high-quality-thermocouple-sensor-for-3d-printer-Screw-thread-M4/332233484894)
-##### Inexpensive (~ $15) Solid State Relay from eBay/Amazon
-##### I2C 128x32 OLED display from eBay/Amazon
+#### Inexpensive Arduino Nano v3 from eBay/Amazon
+#### K Type thermocouple from a QIDI 3D printer with M4 threads from [eBay](https://www.ebay.ca/itm/QIDI-TECHNOLOGY-high-quality-thermocouple-sensor-for-3d-printer-Screw-thread-M4/332233484894)
+#### Inexpensive (~ $15) Solid State Relay from eBay/Amazon
+#### I2C 128x32 OLED display from eBay/Amazon
