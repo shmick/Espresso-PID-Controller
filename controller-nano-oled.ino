@@ -58,9 +58,6 @@ const int WindowSize = 1000;
 // Used for max time shutdown
 int timeNowMins;
 
-// Used with FullPwrPct for initial startup
-int SetpointPct;
-
 // PID variables
 double Input, Output;
 
@@ -129,14 +126,13 @@ void setup()
     lastMessage = now; // timestamp
   }
 
-  // Set the Relay to output mode and ensure the relay if off
+  // Set the Relay to output mode and ensure the relay is off
   pinMode(RelayPin, OUTPUT);
   digitalWrite(RelayPin, LOW);
 
   // PID settings
   windowStartTime = now;
   myPID.SetOutputLimits(0, 100);
-  //myPID.SetOutputLimits(0, 500);
   myPID.SetSampleTime(50);
 
   // Do initial calc of brdVolts / 1023
