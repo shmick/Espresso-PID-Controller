@@ -205,8 +205,8 @@ void relayControl(void)
   if ( timeNowMins >= maxRunTime )
   {
     digitalWrite(RelayPin, LOW);
-    myPID.SetTunings(0, 0, 0);
     myPID.SetMode(MANUAL);
+    Output = 0;
     operMode = false;
   } else {
     // Compute the PID values
