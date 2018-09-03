@@ -47,12 +47,12 @@ const int FullPwrPct = 1.0;
 double Setpoint = 105;
 
 // Define the PID tuning Parameters
-double Kp = 4.0;
-double Ki = 0.2;
+double Kp = 3.5;
+double Ki = 0.1;
 double Kd = 0.0;
 
 // PWM Window in milliseconds
-const int WindowSize = 500;
+const int WindowSize = 1000;
 
 
 // ***********************************************************
@@ -140,6 +140,7 @@ void setup()
   // PID settings
   windowStartTime = now;
   myPID.SetOutputLimits(0, 100);
+  //myPID.SetOutputLimits(0, 500);
   myPID.SetSampleTime(50);
 
   // Do initial calc of brdVolts / 1023
