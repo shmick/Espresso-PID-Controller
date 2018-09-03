@@ -47,12 +47,12 @@ const int FullPwrPct = 1.0;
 double Setpoint = 105;
 
 // Define the PID tuning Parameters
-double Kp = 5.0;
-double Ki = 0.3;
-double Kd = 1.5;
+double Kp = 4.0;
+double Ki = 0.2;
+double Kd = 0.0;
 
 // PWM Window in milliseconds
-const int WindowSize = 1000;
+const int WindowSize = 500;
 
 
 // ***********************************************************
