@@ -33,11 +33,11 @@ const int Vref = 1230;
 
 // After powering on, how many minutes until we force the boiler to power down
 // Turning the machine off and on again will reset the timer
-const int maxRunTime = 45;
+const int maxRunTime = 180;
 
-// Turn the display off after 90 minutes
+// Turn the display off after 200 minutes
 //
-const int maxDisplayMins = 90;
+const int maxDisplayMins = 200;
 
 // Define the PID setpoint
 double Setpoint = 105;
