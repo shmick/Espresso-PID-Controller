@@ -99,7 +99,7 @@ const double c9 = -1.052755E-08;
 unsigned long now = 0; //This variable is used to keep track of time
 
 // Communication setup
-const long serialPing = 1000; //This determines how often we ping our loop
+const int serialPing = 1000; //This determines how often we ping our loop
 // Serial pingback interval in milliseconds
 
 // placehodler for current timestamp
@@ -111,7 +111,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 #if (SSD1306_LCDHEIGHT != 32)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
-long previousOLEDMillis = 0;            // will store last time OLED was updated
+unsigned long previousOLEDMillis = 0;            // will store last time OLED was updated
 const int OLEDinterval = 250;           // interval at which to write new data to the OLED
 
 // Set to true to enable serial port output
