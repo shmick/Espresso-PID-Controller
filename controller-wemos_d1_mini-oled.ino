@@ -21,6 +21,7 @@
 
 // Needed for ESP8266
 #include <ESP8266WiFi.h>
+//#include "index.h" //Our HTML webpage contents with javascript
 
 // Needed for pushing new sketches over WiFi
 #include <ESP8266mDNS.h>
@@ -129,9 +130,9 @@ const int serialPing = 1000; //This determines how often we ping our loop
 // placehodler for current timestamp
 unsigned long lastMessage = 0; //This keeps track of when our loop last spoke to serial
 
-const int checkWifi = 1000; //This determines how often we check the WiFi connection
+const int checkWifi = 3000; //This determines how often we check the WiFi connection
 unsigned long lastWifi = 0; //This keeps track of when our loop last checked the WiFi connectio
-
+int reconnectWifi = 0; // Initialize the counter to track how many times the wifi reconnects
 
 // OLED Display setup
 #define OLED_RESET 4
@@ -190,10 +191,11 @@ void setup()
   }
 
   server.begin();
-  //Serial.printf("Web server started, open %s in a web browser\n", WiFi.localIP().toString().c_str());
 
   ArduinoOTA.setHostname("Wemos D1 Mni - espresso");  // For OTA - change name here to help identify device.
   ArduinoOTA.begin();  // For OTA
+  //MDNS.begin("gaggia");
+
 } // end of setup()
 
 
@@ -207,6 +209,7 @@ void readTemps(void)
   total = total + readings[readIndex];
   // advance to the next position in the array:
   readIndex = readIndex + 1;
+  yield();
 
   // if we're at the end of the array...
   if (readIndex >= numReadings)
@@ -272,8 +275,10 @@ void relayControl(void)
   if (PWMOutput > (now - windowStartTime))
   {
     digitalWrite(RelayPin, LOW);  // Wemos LED LOW = ON
+    yield();
   } else {
     digitalWrite(RelayPin, HIGH); // Wemos LED HIGH = OFF
+    yield();
   }
 }
 
@@ -321,6 +326,7 @@ void displayStats(void)
       }
     }
     // Do the needful!
+    yield();
     display.display();
   }
 }
@@ -349,8 +355,8 @@ void wifi_client()
       }
     }
     client.stop();
+    yield();
   }
-
 }
 
 
@@ -363,12 +369,14 @@ String prepareHtmlPage()
     "\r\n" +
     "<!DOCTYPE HTML>" +
     "<html>" +
+    "<h1>" +
     "Time: " + now / 1000 + "<br>" +
     "Setpoint: " + Setpoint + "<br>" +
     "PID Input:  " + Input + "<br>" +
     "PID Output: " + Output + "<br>" +
     "Avg: " + average + "<br>" +
     "Vout: " + Vout + "<br>" +
+    "WiFi Reconnects: " + reconnectWifi + "<br>" +
     "</html>" +
     "\r\n";
   return htmlPage;
@@ -381,9 +389,11 @@ void wifiCheck(void)
     if (now - lastWifi > checkWifi)
     {
       WiFi.reconnect();
+      reconnectWifi++;
     }
     lastWifi = now; //update the time stamp.
   }
+  yield();
 }
 
 
@@ -392,6 +402,7 @@ void displaySerial(void)
   // Output some data to serial to see what's happening
   if (now - lastMessage > serialPing)
   {
+    yield();
     if ( operMode == true )
     {
       Serial.print("Time: ");
