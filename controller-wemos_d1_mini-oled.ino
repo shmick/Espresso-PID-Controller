@@ -36,7 +36,7 @@ const double brdVolts = 3.3;
 
 // Vref for AD8495 board (in millivolts)
 // Set to 0 if your reference voltage is grounded
-const int Vref = 1230;
+const int Vref = 0;
 
 // After powering on, how many minutes until we force the boiler to power down
 // Turning the machine off and on again will reset the timer
@@ -47,7 +47,8 @@ const int maxRunTime = 180;
 const int maxDisplayMins = 200;
 
 // Define the PID setpoint
-double Setpoint = 105;
+//double Setpoint = 105;
+double Setpoint = 1;
 
 // Define the PID tuning Parameters
 //double Kp = 3.5; working ok on 2018-09-14
@@ -134,7 +135,7 @@ unsigned long previousOLEDMillis = 0;            // will store last time OLED wa
 const int OLEDinterval = 250;           // interval at which to write new data to the OLED
 
 // Set to true to enable serial port output
-bool SerialOut = false;
+bool SerialOut = true;
 
 void setup()
 {
@@ -172,17 +173,19 @@ void setup()
   display.display();
 
   // Connect to Wi-Fi network with SSID and password
+  // WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
+  int count = 1;
+  while ((count<=60) && (WiFi.status() != WL_CONNECTED)) {
     delay(500);
+    count=count+1;
   }
+
   server.begin();
   //Serial.printf("Web server started, open %s in a web browser\n", WiFi.localIP().toString().c_str());
 
   ArduinoOTA.setHostname("Wemos D1 Mni - espresso");  // For OTA - change name here to help identify device.
   ArduinoOTA.begin();  // For OTA
-
-
 } // end of setup()
 
 void loop()
@@ -198,8 +201,6 @@ void loop()
   }
   wifi_client();
   ArduinoOTA.handle();  // For OTA
-
-
 
 } // End of loop()
 
@@ -366,6 +367,7 @@ String prepareHtmlPage()
     "\r\n" +
     "<!DOCTYPE HTML>" +
     "<html>" +
+    "Time: " + now / 1000 + "<br>" +    
     "Setpoint: " + Setpoint + "<br>" +
     "PID Input:  " + Input + "<br>" +
     "PID Output: " + Output + "<br>" +
@@ -402,6 +404,7 @@ void displaySerial(void)
       Serial.print("Vout: ");
       Serial.print(Vout);
       Serial.print("\n");
+      Serial.println(WiFi.status());
     } else {
       Serial.print("Input: ");
       Serial.print(Input, 1);
