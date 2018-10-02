@@ -9,14 +9,20 @@
   Hardware:
   Solid State Relay: "25A SSR-25 DA"
 */
+
 #include <PID_v1.h>
+
+// Needed for the OLED display
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Fonts/FreeSerifBold18pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 
+// Needed for ESP8266
 #include <ESP8266WiFi.h>
+
+// Needed for pushing new sketches over WiFi
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
@@ -28,7 +34,7 @@
 
 #define ThermocouplePin 0
 //#define RelayPin 2
-#define RelayPin LED_BUILTIN
+#define RelayPin LED_BUILTIN // While testing the Wemos D1 mini
 
 // Board voltage 3.3v or 5v
 // Best to measure between GND and VCC for most accurate readings
@@ -113,6 +119,7 @@ const double c7 = -4.413030E-05;
 const double c8 = 1.057734E-06;
 const double c9 = -1.052755E-08;
 
+
 unsigned long now = 0; //This variable is used to keep track of time
 
 // Communication setup
@@ -122,8 +129,9 @@ const int serialPing = 1000; //This determines how often we ping our loop
 // placehodler for current timestamp
 unsigned long lastMessage = 0; //This keeps track of when our loop last spoke to serial
 
-// placehodler for current timestamp
-unsigned long lastMessageWeb = 0; //This keeps track of when our loop last spoke to serial
+const int checkWifi = 1000; //This determines how often we check the WiFi connection
+unsigned long lastWifi = 0; //This keeps track of when our loop last checked the WiFi connectio
+
 
 // OLED Display setup
 #define OLED_RESET 4
@@ -176,9 +184,9 @@ void setup()
   // WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   int count = 1;
-  while ((count<=60) && (WiFi.status() != WL_CONNECTED)) {
+  while ((count <= 60) && (WiFi.status() != WL_CONNECTED)) {
     delay(500);
-    count=count+1;
+    count = count + 1;
   }
 
   server.begin();
@@ -187,22 +195,6 @@ void setup()
   ArduinoOTA.setHostname("Wemos D1 Mni - espresso");  // For OTA - change name here to help identify device.
   ArduinoOTA.begin();  // For OTA
 } // end of setup()
-
-void loop()
-{
-  //Keep track of time
-  now = millis();
-  readTemps();
-  relayControl();
-  displayStats();
-  if ( SerialOut == true )
-  {
-    displaySerial();
-  }
-  wifi_client();
-  ArduinoOTA.handle();  // For OTA
-
-} // End of loop()
 
 
 void readTemps(void)
@@ -247,6 +239,7 @@ void readTemps(void)
           + c9 * pow(Vtc, 9);
 }
 
+
 void relayControl(void)
 {
   // Calculate the number of running minutes
@@ -283,6 +276,7 @@ void relayControl(void)
     digitalWrite(RelayPin, HIGH); // Wemos LED HIGH = OFF
   }
 }
+
 
 void displayStats(void)
 {
@@ -331,6 +325,7 @@ void displayStats(void)
   }
 }
 
+
 void wifi_client()
 {
   WiFiClient client = server.available();
@@ -358,6 +353,7 @@ void wifi_client()
 
 }
 
+
 String prepareHtmlPage()
 {
   String htmlPage =
@@ -367,7 +363,7 @@ String prepareHtmlPage()
     "\r\n" +
     "<!DOCTYPE HTML>" +
     "<html>" +
-    "Time: " + now / 1000 + "<br>" +    
+    "Time: " + now / 1000 + "<br>" +
     "Setpoint: " + Setpoint + "<br>" +
     "PID Input:  " + Input + "<br>" +
     "PID Output: " + Output + "<br>" +
@@ -376,6 +372,18 @@ String prepareHtmlPage()
     "</html>" +
     "\r\n";
   return htmlPage;
+}
+
+
+void wifiCheck(void)
+{
+  while (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
+    if (now - lastWifi > checkWifi)
+    {
+      WiFi.reconnect();
+    }
+    lastWifi = now; //update the time stamp.
+  }
 }
 
 
@@ -415,3 +423,20 @@ void displaySerial(void)
     lastMessage = now; //update the time stamp.
   }
 }
+
+
+void loop()
+{
+  //Keep track of time
+  now = millis();
+  readTemps();
+  relayControl();
+  displayStats();
+  if ( SerialOut == true )
+  {
+    displaySerial();
+  }
+  wifi_client();
+  ArduinoOTA.handle();
+  wifiCheck();
+} // End of loop()
