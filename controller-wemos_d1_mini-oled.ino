@@ -124,7 +124,7 @@ const double c9 = -1.052755E-08;
 unsigned long now = 0; //This variable is used to keep track of time
 
 // Communication setup
-const int serialPing = 1000; //This determines how often we ping our loop
+const int serialPing = 500; //This determines how often we ping our loop
 // Serial pingback interval in milliseconds
 
 // placehodler for current timestamp
@@ -283,7 +283,7 @@ void relayControl(void)
 }
 
 
-void displayStats(void)
+void displayOLED(void)
 {
   unsigned long currentOLEDMillis = now;
 
@@ -332,7 +332,7 @@ void displayStats(void)
 }
 
 
-void wifi_client()
+void serveCients()
 {
   WiFiClient client = server.available();
   // wait for a client (web browser) to connect
@@ -383,9 +383,10 @@ String prepareHtmlPage()
 }
 
 
-void wifiCheck(void)
+void checkWiFi(void)
 {
   while (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
+    yield();
     if (now - lastWifi > checkWifi)
     {
       WiFi.reconnect();
@@ -393,61 +394,62 @@ void wifiCheck(void)
     }
     lastWifi = now; //update the time stamp.
   }
-  yield();
 }
 
 
 void displaySerial(void)
 {
-  // Output some data to serial to see what's happening
-  if (now - lastMessage > serialPing)
+  if ( SerialOut == true )
   {
-    yield();
-    if ( operMode == true )
+
+    // Output some data to serial to see what's happening
+    if (now - lastMessage > serialPing)
     {
-      Serial.print("Time: ");
-      Serial.print(now / 1000);
-      Serial.print(", ");
-      Serial.print("SP: ");
-      Serial.print(Setpoint, 0);
-      Serial.print(", ");
-      Serial.print("Input: ");
-      Serial.print(Input, 1);
-      Serial.print(", ");
-      Serial.print("Output: ");
-      Serial.print(Output, 1);
-      Serial.print(", ");
-      Serial.print("Avg: ");
-      Serial.print(average);
-      Serial.print(", ");
-      Serial.print("Vout: ");
-      Serial.print(Vout);
-      Serial.print("\n");
-      Serial.println(WiFi.status());
-    } else {
-      Serial.print("Input: ");
-      Serial.print(Input, 1);
-      Serial.print(", ");
-      Serial.print("Mode: off");
-      Serial.print("\n");
+      //    yield();
+
+      if ( operMode == true )
+      {
+        Serial.print("Time: ");
+        Serial.println(now / 1000);
+        /*   Serial.print(", ");
+           Serial.print("SP: ");
+           Serial.print(Setpoint, 0);
+           Serial.print(", ");
+           Serial.print("Input: ");
+           Serial.print(Input, 1);
+           Serial.print(", ");
+           Serial.print("Output: ");
+           Serial.print(Output, 1);
+           Serial.print(", ");
+           Serial.print("Avg: ");
+           Serial.print(average);
+           Serial.print(", ");
+           Serial.print("Vout: ");
+           Serial.print(Vout);
+           Serial.print("\n"); */
+        Serial.println(WiFi.status());
+      } else {
+        Serial.print("Input: ");
+        Serial.print(Input, 1);
+        Serial.print(", ");
+        Serial.print("Mode: off");
+        Serial.print("\n");
+      }
+      lastMessage = now; //update the time stamp.
     }
-    lastMessage = now; //update the time stamp.
   }
 }
-
 
 void loop()
 {
   //Keep track of time
   now = millis();
+
   readTemps();
   relayControl();
-  displayStats();
-  if ( SerialOut == true )
-  {
-    displaySerial();
-  }
-  wifi_client();
+  displayOLED();
+  displaySerial();
+  serveCients();
+  checkWiFi();
   ArduinoOTA.handle();
-  wifiCheck();
 } // End of loop()
