@@ -43,6 +43,7 @@ const double brdVolts = 3.3;
 
 // Vref for AD8495 board (in millivolts)
 // Set to 0 if your reference voltage is grounded
+// Set to 1200 (1.2 volts) if using the Adafruit board
 const int Vref = 0;
 
 // After powering on, how many minutes until we force the boiler to power down
@@ -50,7 +51,6 @@ const int Vref = 0;
 const int maxRunTime = 180;
 
 // Turn the display off after 200 minutes
-//
 const int maxDisplayMins = 200;
 
 // Define the PID setpoint
@@ -130,9 +130,8 @@ const int serialPing = 500; //This determines how often we ping our loop
 // placehodler for current timestamp
 unsigned long lastMessage = 0; //This keeps track of when our loop last spoke to serial
 
-const int checkWifi = 3000; //This determines how often we check the WiFi connection
-unsigned long lastWifi = 0; //This keeps track of when our loop last checked the WiFi connectio
-int reconnectWifi = 0; // Initialize the counter to track how many times the wifi reconnects
+const int clientWait = 50;
+unsigned long lastClient = 0;
 
 // OLED Display setup
 #define OLED_RESET 4
@@ -209,8 +208,6 @@ void readTemps(void)
   total = total + readings[readIndex];
   // advance to the next position in the array:
   readIndex = readIndex + 1;
-  yield();
-
   // if we're at the end of the array...
   if (readIndex >= numReadings)
   {
@@ -275,10 +272,8 @@ void relayControl(void)
   if (PWMOutput > (now - windowStartTime))
   {
     digitalWrite(RelayPin, LOW);  // Wemos LED LOW = ON
-    yield();
   } else {
     digitalWrite(RelayPin, HIGH); // Wemos LED HIGH = OFF
-    yield();
   }
 }
 
@@ -326,7 +321,6 @@ void displayOLED(void)
       }
     }
     // Do the needful!
-    yield();
     display.display();
   }
 }
@@ -345,7 +339,6 @@ void serveCients()
       if (client.available())
       {
         String line = client.readStringUntil('\r');
-        //Serial.print(line);
         // wait for end of client's request, that is marked with an empty line
         if (line.length() == 1 && line[0] == '\n')
         {
@@ -354,8 +347,11 @@ void serveCients()
         }
       }
     }
-    client.stop();
-    yield();
+    if (now - lastClient > clientWait)
+    {
+      client.stop();
+      lastClient = now;
+    }
   }
 }
 
@@ -376,24 +372,9 @@ String prepareHtmlPage()
     "PID Output: " + Output + "<br>" +
     "Avg: " + average + "<br>" +
     "Vout: " + Vout + "<br>" +
-    "WiFi Reconnects: " + reconnectWifi + "<br>" +
     "</html>" +
     "\r\n";
   return htmlPage;
-}
-
-
-void checkWiFi(void)
-{
-  while (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
-    yield();
-    if (now - lastWifi > checkWifi)
-    {
-      WiFi.reconnect();
-      reconnectWifi++;
-    }
-    lastWifi = now; //update the time stamp.
-  }
 }
 
 
@@ -405,8 +386,6 @@ void displaySerial(void)
     // Output some data to serial to see what's happening
     if (now - lastMessage > serialPing)
     {
-      //    yield();
-
       if ( operMode == true )
       {
         Serial.print("Time: ");
@@ -427,7 +406,7 @@ void displaySerial(void)
            Serial.print("Vout: ");
            Serial.print(Vout);
            Serial.print("\n"); */
-        Serial.println(WiFi.status());
+        //Serial.println(WiFi.status());
       } else {
         Serial.print("Input: ");
         Serial.print(Input, 1);
@@ -440,16 +419,21 @@ void displaySerial(void)
   }
 }
 
+
 void loop()
 {
   //Keep track of time
   now = millis();
-
   readTemps();
+  delay(1);
   relayControl();
+  delay(1);
   displayOLED();
+  delay(1);
   displaySerial();
+  delay(1);
   serveCients();
-  checkWiFi();
+  delay(1);
   ArduinoOTA.handle();
+  delay(1);
 } // End of loop()
