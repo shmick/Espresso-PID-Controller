@@ -7,6 +7,9 @@
   Smoothing: https://www.arduino.cc/en/Tutorial/Smoothing
 
   Hardware:
+  Wemos D1 Mini ( https://wiki.wemos.cc/products:d1:d1_mini )
+  128 x 64 OLED Display
+  AD8495 Thermocouple Amplifier
   Solid State Relay: "25A SSR-25 DA"
 */
 
@@ -33,13 +36,18 @@
 // * Config options that you can customize *
 // *****************************************
 
+// Replace with your own WiFi network credentials
+const char* ssid     = "";
+const char* password = "";
+
 #define ThermocouplePin 0
 //#define RelayPin 2
 #define RelayPin LED_BUILTIN // While testing the Wemos D1 mini
 
-// Board voltage 3.3v or 5v
+// Board voltage 3.3v or 5v for Arduino.
+// Set to 3.2 for ESP8266 units due to the voltage divider on ADC0
 // Best to measure between GND and VCC for most accurate readings
-const double brdVolts = 3.3;
+const double brdVolts = 3.2;
 
 // Vref for AD8495 board (in millivolts)
 // Set to 0 if your reference voltage is grounded
@@ -55,7 +63,7 @@ const int maxDisplayMins = 200;
 
 // Define the PID setpoint
 //double Setpoint = 105;
-double Setpoint = 1;
+double Setpoint = 25;
 
 // Define the PID tuning Parameters
 //double Kp = 3.5; working ok on 2018-09-14
@@ -70,10 +78,12 @@ const int WindowSize = 5000;
 WiFiServer server(80);
 // Variable to store the HTTP request
 String header;
-// Replace with your network credentials
-const char* ssid     = "";
-const char* password = "";
 
+// Default to being ON
+bool operMode = true;
+
+// Set to true to enable serial port output
+bool SerialOut = true;
 
 // ***********************************************************
 // * There should be no need to tweak many things below here *
@@ -83,17 +93,12 @@ const char* password = "";
 int timeNowMins;
 
 // PID variables
-double Input, Output;
-
 // Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
+double Input, Output;
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
-
 double PWMOutput;
-
-// Default to being ON
-bool operMode = true;
-
 unsigned long windowStartTime;
+
 
 // Define the info needed for the temperature averaging
 const int numReadings = 32;
@@ -121,29 +126,32 @@ const double c8 = 1.057734E-06;
 const double c9 = -1.052755E-08;
 
 
+// All timers used the value of now
 unsigned long now = 0; //This variable is used to keep track of time
 
-// Communication setup
-const int serialPing = 500; //This determines how often we ping our loop
-// Serial pingback interval in milliseconds
+// OLED display timer
+unsigned long previousOLEDMillis = 0;            // will store last time OLED was updated
+const int OLEDinterval = 200;           // interval at which to write new data to the OLED
 
-// placehodler for current timestamp
+// Serial output timer
+const int serialPing = 500; //This determines how often we ping our loop
 unsigned long lastMessage = 0; //This keeps track of when our loop last spoke to serial
 
+// Web Server client timer
 const int clientWait = 50;
 unsigned long lastClient = 0;
 
+
 // OLED Display setup
-#define OLED_RESET 4
+#define OLED_SDA 14 // Arduino 14 = ESP8266 Pin 5
+#define OLED_SCL 12 // Arduino 12 = ESP8266 Pin 6
+#define OLED_RESET 16
+#define OLED_I2C 0x3C
 Adafruit_SSD1306 display(OLED_RESET);
-#if (SSD1306_LCDHEIGHT != 32)
+#if (SSD1306_LCDHEIGHT != 64)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
-unsigned long previousOLEDMillis = 0;            // will store last time OLED was updated
-const int OLEDinterval = 250;           // interval at which to write new data to the OLED
 
-// Set to true to enable serial port output
-bool SerialOut = true;
 
 void setup()
 {
@@ -162,7 +170,6 @@ void setup()
   windowStartTime = now;
 
   myPID.SetOutputLimits(0, 100);
-  //  myPID.SetSampleTime(50);
 
   // Do initial calc of brdVolts / 1023
   Vbits = brdVolts / 1023;
@@ -173,15 +180,17 @@ void setup()
     readings[thisReading] = 0;
   }
 
+  // Enable I2C communication
+  Wire.begin(OLED_SDA, OLED_SCL);
+
   // Setup the OLED display
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
+  display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C);  // initialize with the I2C addr 0x3C (for the 128x32)
   display.clearDisplay();
   display.setTextColor(WHITE);
   display.setTextSize(1);
   display.display();
 
   // Connect to Wi-Fi network with SSID and password
-  // WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   int count = 1;
   while ((count <= 60) && (WiFi.status() != WL_CONNECTED)) {
@@ -217,7 +226,6 @@ void readTemps(void)
 
   // calculate the average:
   average = total / numReadings;
-
   // This should match the output voltage on the Out pin of the AD8945
   Vout = average * Vbits;
 
@@ -291,8 +299,22 @@ void displayOLED(void)
 
     if ( operMode == true )
     {
+      // TOP HALF = Temp + Input Temp
       display.setFont(&FreeSans9pt7b);
       display.setCursor(0, 22);
+      display.print("Temp");
+
+      display.setFont(&FreeSerifBold18pt7b);
+      display.setCursor(48, 26);
+      display.print(Input * 5.3, 1);
+
+      // BOTTOM HALF = Output + Output Percent
+      display.setFont(&FreeSans9pt7b);
+      display.setCursor(0, 56);
+      display.print("Output");
+
+      display.setFont(&FreeSerifBold18pt7b);
+      display.setCursor(60, 60);
       // Dont add a decimal place for 100 or 0
       if ( (Output >= 100) || (Output == 0) )
       {
@@ -302,9 +324,6 @@ void displayOLED(void)
       {
         display.print(Output, 1);
       }
-      display.setFont(&FreeSerifBold18pt7b);
-      display.setCursor(42, 28);
-      display.print(Input, 1);
     }
     else if ( operMode == false )
     {
@@ -425,9 +444,9 @@ void loop()
   //Keep track of time
   now = millis();
   readTemps();
-  delay(1);
+  //delay(1);
   relayControl();
-  delay(1);
+  //delay(1);
   displayOLED();
   delay(1);
   displaySerial();
@@ -435,5 +454,5 @@ void loop()
   serveCients();
   delay(1);
   ArduinoOTA.handle();
-  delay(1);
+  //delay(1);
 } // End of loop()
