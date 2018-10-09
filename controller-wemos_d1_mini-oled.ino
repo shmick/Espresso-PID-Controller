@@ -5,7 +5,7 @@
   PID Library: https://github.com/br3ttb/Arduino-PID-Library
   PID Lab: https://www.pdx.edu/nanogroup/sites/www.pdx.edu.nanogroup/files/2013_Arduino%20PID%20Lab_0.pdf
   Smoothing: https://www.arduino.cc/en/Tutorial/Smoothing
-
+  Arduino <> Wemos D1 Mini pins: https://github.com/esp8266/Arduino/blob/master/variants/d1_mini/pins_arduino.h
   Hardware:
   Wemos D1 Mini ( https://wiki.wemos.cc/products:d1:d1_mini )
   128 x 64 OLED Display
@@ -40,9 +40,8 @@
 const char* ssid     = "";
 const char* password = "";
 
-#define ThermocouplePin 0
-//#define RelayPin 2
-#define RelayPin LED_BUILTIN // While testing the Wemos D1 mini
+#define ThermocouplePin 0 // Ardunio 0 = Wemos D1 Mini Pin A0
+#define RelayPin 4 // Ardunio D4 = Wemos D1 Mini Pin D2
 
 // Board voltage 3.3v or 5v for Arduino.
 // Set to 3.2 for ESP8266 units due to the voltage divider on ADC0
@@ -63,7 +62,8 @@ const int maxDisplayMins = 200;
 
 // Define the PID setpoint
 //double Setpoint = 105;
-double Setpoint = 25;
+double Setpoint = 105.11;
+//double Setpoint = 24;
 
 // Define the PID tuning Parameters
 //double Kp = 3.5; working ok on 2018-09-14
@@ -82,8 +82,6 @@ String header;
 // Default to being ON
 bool operMode = true;
 
-// Set to true to enable serial port output
-bool SerialOut = true;
 
 // ***********************************************************
 // * There should be no need to tweak many things below here *
@@ -110,9 +108,10 @@ int average = 0;                // the average
 // Thermocouple variables
 float Vout;
 float Vtc;
-float Vbits;
+const float Vbits = brdVolts / 1023;;
 
 // Corrected temperature readings for a K-type thermocouple
+// https://srdata.nist.gov/its90/type_k/kcoefficients_inverse.html
 // Coefficient values for 0C - 500C / 0mV - 20.644mV
 const double c0 = 0.000000E+00;
 const double c1 = 2.508355E+01;
@@ -126,20 +125,20 @@ const double c8 = 1.057734E-06;
 const double c9 = -1.052755E-08;
 
 
-// All timers used the value of now
+// All timers reference the value of now
 unsigned long now = 0; //This variable is used to keep track of time
 
 // OLED display timer
-unsigned long previousOLEDMillis = 0;            // will store last time OLED was updated
 const int OLEDinterval = 200;           // interval at which to write new data to the OLED
+unsigned long previousOLEDMillis = now;            // will store last time OLED was updated
 
 // Serial output timer
 const int serialPing = 500; //This determines how often we ping our loop
-unsigned long lastMessage = 0; //This keeps track of when our loop last spoke to serial
+unsigned long lastMessage = now; //This keeps track of when our loop last spoke to serial
 
 // Web Server client timer
 const int clientWait = 50;
-unsigned long lastClient = 0;
+unsigned long lastClient = now;
 
 
 // OLED Display setup
@@ -150,17 +149,16 @@ unsigned long lastClient = 0;
 Adafruit_SSD1306 display(OLED_RESET);
 #if (SSD1306_LCDHEIGHT != 64)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
+// You will need to modify the Adafruit_SSD1306.h file
+// Step 1: uncomment this line: #define SSD1306_128_64
+// Step 2: add a comment to this line: #define SSD1306_128_32
 #endif
 
 
 void setup()
 {
-  if ( SerialOut == true )
-  {
-    //Setup Serial
-    Serial.begin(115200); //Start a serial session
-    lastMessage = now; // timestamp
-  }
+  Serial.begin(115200); //Start a serial session
+  lastMessage = now; // timestamp
 
   // Set the Relay to output mode and ensure the relay is off
   pinMode(RelayPin, OUTPUT);
@@ -170,9 +168,6 @@ void setup()
   windowStartTime = now;
 
   myPID.SetOutputLimits(0, 100);
-
-  // Do initial calc of brdVolts / 1023
-  Vbits = brdVolts / 1023;
 
   // initialize all the readings to 0:
   for (int thisReading = 0; thisReading < numReadings; thisReading++)
@@ -226,6 +221,7 @@ void readTemps(void)
 
   // calculate the average:
   average = total / numReadings;
+
   // This should match the output voltage on the Out pin of the AD8945
   Vout = average * Vbits;
 
@@ -279,9 +275,9 @@ void relayControl(void)
   // If that is greater than (or equal to) the Output value the relay is turned OFF.
   if (PWMOutput > (now - windowStartTime))
   {
-    digitalWrite(RelayPin, LOW);  // Wemos LED LOW = ON
+    digitalWrite(RelayPin, HIGH);  // Wemos BUILTIN_LED LOW = ON
   } else {
-    digitalWrite(RelayPin, HIGH); // Wemos LED HIGH = OFF
+    digitalWrite(RelayPin, LOW); // Wemos BUILTIN_LED HIGH = OFF
   }
 }
 
@@ -306,7 +302,7 @@ void displayOLED(void)
 
       display.setFont(&FreeSerifBold18pt7b);
       display.setCursor(48, 26);
-      display.print(Input * 5.3, 1);
+      display.print(Input, 1);
 
       // BOTTOM HALF = Output + Output Percent
       display.setFont(&FreeSans9pt7b);
@@ -319,6 +315,10 @@ void displayOLED(void)
       if ( (Output >= 100) || (Output == 0) )
       {
         display.print(Output, 0);
+      }
+      else if ( Output < 10 ) 
+      {
+        display.print(Output, 2);
       }
       else
       {
@@ -377,6 +377,7 @@ void serveCients()
 
 String prepareHtmlPage()
 {
+  int sp = Setpoint;
   String htmlPage =
     String("HTTP/1.1 200 OK\r\n") +
     "Content-Type: text/html\r\n" +
@@ -386,7 +387,7 @@ String prepareHtmlPage()
     "<html>" +
     "<h1>" +
     "Time: " + now / 1000 + "<br>" +
-    "Setpoint: " + Setpoint + "<br>" +
+    "Setpoint: " + sp + "<br>" +
     "PID Input:  " + Input + "<br>" +
     "PID Output: " + Output + "<br>" +
     "Avg: " + average + "<br>" +
@@ -399,42 +400,38 @@ String prepareHtmlPage()
 
 void displaySerial(void)
 {
-  if ( SerialOut == true )
+  // Output some data to serial to see what's happening
+  if (now - lastMessage > serialPing)
   {
-
-    // Output some data to serial to see what's happening
-    if (now - lastMessage > serialPing)
+    if ( operMode == true )
     {
-      if ( operMode == true )
-      {
-        Serial.print("Time: ");
-        Serial.println(now / 1000);
-        /*   Serial.print(", ");
-           Serial.print("SP: ");
-           Serial.print(Setpoint, 0);
-           Serial.print(", ");
-           Serial.print("Input: ");
-           Serial.print(Input, 1);
-           Serial.print(", ");
-           Serial.print("Output: ");
-           Serial.print(Output, 1);
-           Serial.print(", ");
-           Serial.print("Avg: ");
-           Serial.print(average);
-           Serial.print(", ");
-           Serial.print("Vout: ");
-           Serial.print(Vout);
-           Serial.print("\n"); */
-        //Serial.println(WiFi.status());
-      } else {
-        Serial.print("Input: ");
-        Serial.print(Input, 1);
-        Serial.print(", ");
-        Serial.print("Mode: off");
-        Serial.print("\n");
-      }
-      lastMessage = now; //update the time stamp.
+      Serial.print("Time: ");
+      Serial.println(now / 1000);
+      /*   Serial.print(", ");
+         Serial.print("SP: ");
+         Serial.print(Setpoint, 0);
+         Serial.print(", ");
+         Serial.print("Input: ");
+         Serial.print(Input, 1);
+         Serial.print(", ");
+         Serial.print("Output: ");
+         Serial.print(Output, 1);
+         Serial.print(", ");
+         Serial.print("Avg: ");
+         Serial.print(average);
+         Serial.print(", ");
+         Serial.print("Vout: ");
+         Serial.print(Vout);
+         Serial.print("\n"); */
+      //Serial.println(WiFi.status());
+    } else {
+      Serial.print("Input: ");
+      Serial.print(Input, 1);
+      Serial.print(", ");
+      Serial.print("Mode: off");
+      Serial.print("\n");
     }
+    lastMessage = now; //update the time stamp.
   }
 }
 
