@@ -6,13 +6,13 @@
   PID Lab: https://www.pdx.edu/nanogroup/sites/www.pdx.edu.nanogroup/files/2013_Arduino%20PID%20Lab_0.pdf
   Smoothing: https://www.arduino.cc/en/Tutorial/Smoothing
   Arduino <> Wemos D1 Mini pins: https://github.com/esp8266/Arduino/blob/master/variants/d1_mini/pins_arduino.h
+  ESP8266 file uploading https://tttapa.github.io/ESP8266/Chap12%20-%20Uploading%20to%20Server.html
   Hardware:
   Wemos D1 Mini ( https://wiki.wemos.cc/products:d1:d1_mini )
   128 x 64 OLED Display
   AD8495 Thermocouple Amplifier
   Solid State Relay: "25A SSR-25 DA"
 */
-
 #include <PID_v1.h>
 
 // Needed for the OLED display
@@ -24,13 +24,16 @@
 
 // Needed for ESP8266
 #include <ESP8266WiFi.h>
-//#include "index.h" //Our HTML webpage contents with javascript
+#include <ESP8266WebServer.h>
+#include <FS.h>   //Include File System Headers
+//const char* htmlfile = "/index.html";
 
 // Needed for pushing new sketches over WiFi
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
+#include <ArduinoJson.h>
 
 // *****************************************
 // * Config options that you can customize *
@@ -75,13 +78,13 @@ double Kd = 0.0;
 const int WindowSize = 5000;
 
 // ESP8266 WiFi Details
-WiFiServer server(80);
+//WiFiServer server(80);
+ESP8266WebServer server(80);
 // Variable to store the HTTP request
 String header;
 
 // Default to being ON
 bool operMode = true;
-
 
 // ***********************************************************
 // * There should be no need to tweak many things below here *
@@ -155,6 +158,12 @@ Adafruit_SSD1306 display(OLED_RESET);
 #endif
 
 
+File fsUploadFile;              // a File object to temporarily store the received file
+String getContentType(String filename); // convert the file extension to the MIME type
+bool handleFileRead(String path);       // send the right file to the client (if it exists)
+void handleFileUpload();                // upload a new file to the SPIFFS
+void handleStats();
+
 void setup()
 {
   Serial.begin(115200); //Start a serial session
@@ -193,12 +202,32 @@ void setup()
     count = count + 1;
   }
 
+  SPIFFS.begin();
+
+  server.on("/upload", HTTP_GET, []() {                 // if the client requests the upload page
+    if (!handleFileRead("/upload.html"))                // send it if it exists
+      server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
+  });
+
+  server.on("/upload", HTTP_POST,                       // if the client posts to the upload page
+    [](){ server.send(200); },                          // Send status 200 (OK) to tell the client we are ready to receive
+    handleFileUpload                                    // Receive and save the file
+  );
+  
+  server.onNotFound([]() {                              // If the client requests any URI
+    if (!handleFileRead(server.uri()))                  // send it if it exists
+      server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
+  });
+
+  server.on("/stats", handleStats); //Reads ADC function is called from out index.html
+  server.on("/json", handleJSON);
   server.begin();
 
   ArduinoOTA.setHostname("Wemos D1 Mni - espresso");  // For OTA - change name here to help identify device.
   ArduinoOTA.begin();  // For OTA
-  //MDNS.begin("gaggia");
 
+  MDNS.begin("espresso");
+  
 } // end of setup()
 
 
@@ -251,7 +280,7 @@ void relayControl(void)
 
   // If more than maxRunTime minutes has elapsed, turn the boiler off
   // and dont perform any other PID functions
-  if ( timeNowMins >= maxRunTime )
+  if ( (timeNowMins >= maxRunTime) || (operMode == false) )
   {
     digitalWrite(RelayPin, LOW);
     myPID.SetMode(MANUAL);
@@ -280,6 +309,7 @@ void relayControl(void)
     digitalWrite(RelayPin, LOW); // Wemos BUILTIN_LED HIGH = OFF
   }
 }
+
 
 
 void displayOLED(void)
@@ -316,7 +346,7 @@ void displayOLED(void)
       {
         display.print(Output, 0);
       }
-      else if ( Output < 10 ) 
+      else if ( Output < 10 )
       {
         display.print(Output, 2);
       }
@@ -345,59 +375,6 @@ void displayOLED(void)
 }
 
 
-void serveCients()
-{
-  WiFiClient client = server.available();
-  // wait for a client (web browser) to connect
-  if (client)
-  {
-    //Serial.println("\n[Client connected]");
-    while (client.connected())
-    {
-      // read line by line what the client (web browser) is requesting
-      if (client.available())
-      {
-        String line = client.readStringUntil('\r');
-        // wait for end of client's request, that is marked with an empty line
-        if (line.length() == 1 && line[0] == '\n')
-        {
-          client.println(prepareHtmlPage());
-          break;
-        }
-      }
-    }
-    if (now - lastClient > clientWait)
-    {
-      client.stop();
-      lastClient = now;
-    }
-  }
-}
-
-
-String prepareHtmlPage()
-{
-  int sp = Setpoint;
-  String htmlPage =
-    String("HTTP/1.1 200 OK\r\n") +
-    "Content-Type: text/html\r\n" +
-    "Connection: close\r\n" +  // the connection will be closed after completion of the response
-    "\r\n" +
-    "<!DOCTYPE HTML>" +
-    "<html>" +
-    "<h1>" +
-    "Time: " + now / 1000 + "<br>" +
-    "Setpoint: " + sp + "<br>" +
-    "PID Input:  " + Input + "<br>" +
-    "PID Output: " + Output + "<br>" +
-    "Avg: " + average + "<br>" +
-    "Vout: " + Vout + "<br>" +
-    "</html>" +
-    "\r\n";
-  return htmlPage;
-}
-
-
 void displaySerial(void)
 {
   // Output some data to serial to see what's happening
@@ -407,23 +384,6 @@ void displaySerial(void)
     {
       Serial.print("Time: ");
       Serial.println(now / 1000);
-      /*   Serial.print(", ");
-         Serial.print("SP: ");
-         Serial.print(Setpoint, 0);
-         Serial.print(", ");
-         Serial.print("Input: ");
-         Serial.print(Input, 1);
-         Serial.print(", ");
-         Serial.print("Output: ");
-         Serial.print(Output, 1);
-         Serial.print(", ");
-         Serial.print("Avg: ");
-         Serial.print(average);
-         Serial.print(", ");
-         Serial.print("Vout: ");
-         Serial.print(Vout);
-         Serial.print("\n"); */
-      //Serial.println(WiFi.status());
     } else {
       Serial.print("Input: ");
       Serial.print(Input, 1);
@@ -432,6 +392,80 @@ void displaySerial(void)
       Serial.print("\n");
     }
     lastMessage = now; //update the time stamp.
+  }
+}
+
+
+void handleStats() {
+  String message = "<head> <meta http-equiv=\"refresh\" content=\"2\"> </head>";
+  message +=  "<h1>";
+  message += "Time: " + String(now / 1000) + "<br>";
+  message += "Setpoint: " + String(Setpoint) + "<br>";
+  message +=  "PID Input:  " + String(Input) + "<br>";
+  message +=  "PID Output: " + String(Output) + "<br>";
+  message +=  "Avg: " + String(average) + "<br>";
+  message +=  "Vout: " + String(Vout) + "<br>";
+  server.send(200, "text/html", message);
+}
+
+
+void handleJSON() {
+  StaticJsonBuffer<200> jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  root["Input"] = Input;
+  root["Output"] = Output;
+  root["ADC"] = average;
+  String json;
+  root.prettyPrintTo(json);
+  server.send(200, "application/json", json);
+}
+
+
+String getContentType(String filename) { // convert the file extension to the MIME type
+  if (filename.endsWith(".html")) return "text/html";
+  else if (filename.endsWith(".css")) return "text/css";
+  else if (filename.endsWith(".js")) return "application/javascript";
+  else if (filename.endsWith(".ico")) return "image/x-icon";
+  else if (filename.endsWith(".json")) return "application/json";
+  return "text/plain";
+}
+
+
+bool handleFileRead(String path) { // send the right file to the client (if it exists)
+  Serial.println("handleFileRead: " + path);
+  if (path.endsWith("/")) path += "index.html";         // If a folder is requested, send the index file
+  String contentType = getContentType(path);            // Get the MIME type
+  if (SPIFFS.exists(path)) {                            // If the file exists
+    File file = SPIFFS.open(path, "r");                 // Open it
+    size_t sent = server.streamFile(file, contentType); // And send it to the client
+    file.close();                                       // Then close the file again
+    return true;
+  }
+  Serial.println("\tFile Not Found");
+  return false;                                         // If the file doesn't exist, return false
+}
+
+
+void handleFileUpload() { // upload a new file to the SPIFFS
+  HTTPUpload& upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    String filename = upload.filename;
+    if (!filename.startsWith("/")) filename = "/" + filename;
+    Serial.print("handleFileUpload Name: "); Serial.println(filename);
+    fsUploadFile = SPIFFS.open(filename, "w");            // Open the file for writing in SPIFFS (create if it doesn't exist)
+    filename = String();
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (fsUploadFile)
+      fsUploadFile.write(upload.buf, upload.currentSize); // Write the received bytes to the file
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (fsUploadFile) {                                   // If the file was successfully created
+      fsUploadFile.close();                               // Close the file again
+      Serial.print("handleFileUpload Size: "); Serial.println(upload.totalSize);
+      server.sendHeader("Location", "/success.html");     // Redirect the client to the success page
+      server.send(303);
+    } else {
+      server.send(500, "text/plain", "500: couldn't create file");
+    }
   }
 }
 
@@ -448,7 +482,7 @@ void loop()
   delay(1);
   displaySerial();
   delay(1);
-  serveCients();
+  server.handleClient();
   delay(1);
   ArduinoOTA.handle();
   //delay(1);
