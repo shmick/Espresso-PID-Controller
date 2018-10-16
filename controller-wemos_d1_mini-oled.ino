@@ -33,15 +33,15 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-#include <ArduinoJson.h>
+//#include <ArduinoJson.h>
 
 // *****************************************
 // * Config options that you can customize *
 // *****************************************
 
 // Replace with your own WiFi network credentials
-const char* ssid     = "";
-const char* password = "";
+const char* ssid     = "shmick";
+const char* password = "SixNineTwoSix";
 
 #define ThermocouplePin 0 // Ardunio 0 = Wemos D1 Mini Pin A0
 #define RelayPin 4 // Ardunio D4 = Wemos D1 Mini Pin D2
@@ -89,9 +89,6 @@ bool operMode = true;
 // ***********************************************************
 // * There should be no need to tweak many things below here *
 // ***********************************************************
-
-// Used for max time shutdown
-int timeNowMins;
 
 // PID variables
 // Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
@@ -143,6 +140,9 @@ unsigned long lastMessage = now; //This keeps track of when our loop last spoke 
 const int clientWait = 50;
 unsigned long lastClient = now;
 
+int runTimeMins;
+long runTimeSecs;
+unsigned long runTimeStart = now;
 
 // OLED Display setup
 #define OLED_SDA 14 // Arduino 14 = ESP8266 Pin 5
@@ -158,11 +158,6 @@ Adafruit_SSD1306 display(OLED_RESET);
 #endif
 
 
-File fsUploadFile;              // a File object to temporarily store the received file
-String getContentType(String filename); // convert the file extension to the MIME type
-bool handleFileRead(String path);       // send the right file to the client (if it exists)
-void handleFileUpload();                // upload a new file to the SPIFFS
-void handleStats();
 
 void setup()
 {
@@ -210,10 +205,12 @@ void setup()
   });
 
   server.on("/upload", HTTP_POST,                       // if the client posts to the upload page
-    [](){ server.send(200); },                          // Send status 200 (OK) to tell the client we are ready to receive
-    handleFileUpload                                    // Receive and save the file
-  );
-  
+  []() {
+    server.send(200);
+  },                          // Send status 200 (OK) to tell the client we are ready to receive
+  handleFileUpload                                    // Receive and save the file
+           );
+
   server.onNotFound([]() {                              // If the client requests any URI
     if (!handleFileRead(server.uri()))                  // send it if it exists
       server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
@@ -221,14 +218,23 @@ void setup()
 
   server.on("/stats", handleStats); //Reads ADC function is called from out index.html
   server.on("/json", handleJSON);
+  server.on("/set", HTTP_POST, handleSetvals);
   server.begin();
 
   ArduinoOTA.setHostname("Wemos D1 Mni - espresso");  // For OTA - change name here to help identify device.
   ArduinoOTA.begin();  // For OTA
 
   MDNS.begin("espresso");
-  
+
 } // end of setup()
+
+void keepTime(void)
+{
+  //Keep track of time
+  now = millis();
+  runTimeSecs = (now - runTimeStart) / 1000;
+  runTimeMins = (now - runTimeStart) / 60000;
+}
 
 
 void readTemps(void)
@@ -276,11 +282,10 @@ void readTemps(void)
 void relayControl(void)
 {
   // Calculate the number of running minutes
-  timeNowMins = now / 60000.0;
 
   // If more than maxRunTime minutes has elapsed, turn the boiler off
   // and dont perform any other PID functions
-  if ( (timeNowMins >= maxRunTime) || (operMode == false) )
+  if ( (runTimeMins >= maxRunTime) || (operMode == false) )
   {
     digitalWrite(RelayPin, LOW);
     myPID.SetMode(MANUAL);
@@ -309,7 +314,6 @@ void relayControl(void)
     digitalWrite(RelayPin, LOW); // Wemos BUILTIN_LED HIGH = OFF
   }
 }
-
 
 
 void displayOLED(void)
@@ -358,7 +362,7 @@ void displayOLED(void)
     else if ( operMode == false )
     {
       // After maxDisplayMins minutes turn off the display
-      if ( timeNowMins >= maxDisplayMins )
+      if ( runTimeMins >= maxDisplayMins )
       {
         display.clearDisplay();
       }
@@ -383,7 +387,7 @@ void displaySerial(void)
     if ( operMode == true )
     {
       Serial.print("Time: ");
-      Serial.println(now / 1000);
+      Serial.println(runTimeSecs);
     } else {
       Serial.print("Input: ");
       Serial.print(Input, 1);
@@ -397,27 +401,76 @@ void displaySerial(void)
 
 
 void handleStats() {
-  String message = "<head> <meta http-equiv=\"refresh\" content=\"2\"> </head>";
-  message +=  "<h1>";
-  message += "Time: " + String(now / 1000) + "<br>";
-  message += "Setpoint: " + String(Setpoint) + "<br>";
-  message +=  "PID Input:  " + String(Input) + "<br>";
-  message +=  "PID Output: " + String(Output) + "<br>";
-  message +=  "Avg: " + String(average) + "<br>";
-  message +=  "Vout: " + String(Vout) + "<br>";
+  String message = "<head> <meta http-equiv=\"refresh\" content=\"2\"> </head>\n";
+  message +=  "<h1>\n";
+  message += "Time: " + String(runTimeSecs) + "<br>\n";
+  message += "Setpoint: " + String(Setpoint) + "<br>\n";
+  message +=  "PID Input:  " + String(Input) + "<br>\n";
+  message +=  "PID Output: " + String(Output) + "<br>\n";
+  message +=  "Avg: " + String(average) + "<br>\n";
+  message +=  "Vout: " + String(Vout);
   server.send(200, "text/html", message);
 }
 
-
-void handleJSON() {
+/*
+  void handleJSON() {
   StaticJsonBuffer<200> jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
   root["Input"] = Input;
   root["Output"] = Output;
   root["ADC"] = average;
+  root["Setpoint"] = Setpoint;
+  root["Uptime"] = runTimeSecs;
+  root["Vout"] = Vout;
   String json;
   root.prettyPrintTo(json);
   server.send(200, "application/json", json);
+  }
+*/
+
+void handleJSON() {
+  // Quick and dirty JSON output without the use of ArduinoJson
+  String message = "{ ";
+  message +=  "\"Time\":" + String(runTimeSecs) + ", ";
+  message += "\"Setpoint\":" + String(Setpoint) + ", ";
+  message +=  "\"Input\":" + String(Input) + ", ";
+  message +=  "\"Output\":" + String(Output) + ", ";
+  message +=  "\"ADC\":" + String(average) + ", ";
+  message +=  "\"Vout\":" + String(Vout); // No comma on Last entry
+  message += " }";
+  server.send(200, "application/json", message);
+}
+
+
+void handleSetvals() {
+  String message;
+
+  String opmode_val = server.arg("opmode");
+  String sp_val = server.arg("sp");
+
+  if ( opmode_val == "off" ) {
+    operMode = false;
+    message += "opermode: " + opmode_val;
+    message += "\n";
+  } else if ( opmode_val == "on" ) {
+    operMode = true;
+    runTimeStart = now;
+    message += "opermode: " + opmode_val;
+    message += "\n";
+  }
+
+  if ( sp_val != NULL ) {
+    double sp_int = sp_val.toFloat();
+    if ( sp_int < 105 && sp_int > 0.1 ) {
+      Setpoint = sp_int;
+      message += "Setpoint: " + sp_val;
+      message += "\n";
+    } else {
+      message += "sp: " + String(sp_val) + " is invalid\n";
+    }
+  }
+
+  server.send(200, "text/plain", message);
 }
 
 
@@ -432,7 +485,7 @@ String getContentType(String filename) { // convert the file extension to the MI
 
 
 bool handleFileRead(String path) { // send the right file to the client (if it exists)
-  Serial.println("handleFileRead: " + path);
+  //Serial.println("handleFileRead: " + path);
   if (path.endsWith("/")) path += "index.html";         // If a folder is requested, send the index file
   String contentType = getContentType(path);            // Get the MIME type
   if (SPIFFS.exists(path)) {                            // If the file exists
@@ -447,11 +500,12 @@ bool handleFileRead(String path) { // send the right file to the client (if it e
 
 
 void handleFileUpload() { // upload a new file to the SPIFFS
+  File fsUploadFile;              // a File object to temporarily store the received file
   HTTPUpload& upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
     String filename = upload.filename;
     if (!filename.startsWith("/")) filename = "/" + filename;
-    Serial.print("handleFileUpload Name: "); Serial.println(filename);
+    //Serial.print("handleFileUpload Name: "); Serial.println(filename);
     fsUploadFile = SPIFFS.open(filename, "w");            // Open the file for writing in SPIFFS (create if it doesn't exist)
     filename = String();
   } else if (upload.status == UPLOAD_FILE_WRITE) {
@@ -460,7 +514,7 @@ void handleFileUpload() { // upload a new file to the SPIFFS
   } else if (upload.status == UPLOAD_FILE_END) {
     if (fsUploadFile) {                                   // If the file was successfully created
       fsUploadFile.close();                               // Close the file again
-      Serial.print("handleFileUpload Size: "); Serial.println(upload.totalSize);
+      //Serial.print("handleFileUpload Size: "); Serial.println(upload.totalSize);
       server.sendHeader("Location", "/success.html");     // Redirect the client to the success page
       server.send(303);
     } else {
@@ -472,8 +526,7 @@ void handleFileUpload() { // upload a new file to the SPIFFS
 
 void loop()
 {
-  //Keep track of time
-  now = millis();
+  keepTime();
   readTemps();
   //delay(1);
   relayControl();
