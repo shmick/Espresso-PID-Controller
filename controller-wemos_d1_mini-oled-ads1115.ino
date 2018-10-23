@@ -47,17 +47,17 @@
 const char* ssid     = "";
 const char* password = "";
 
-//#define ThermocouplePin 0 // Ardunio 0 = Wemos D1 Mini Pin A0
+//#define ThermocouplePin 0 // ** Not needed with ADS1115 board
 #define RelayPin 4 // Ardunio D4 = Wemos D1 Mini Pin D2
 
 // Board voltage 3.3v or 5v for Arduino.
 // Set to 3.2 for ESP8266 units due to the voltage divider on ADC0
 // Best to measure between GND and VCC for most accurate readings
-//const double brdVolts = 3.2;
+//const double brdVolts = 3.2; // ** Not needed with ADS1115 board
 
 // Vref for AD8495 board (in millivolts)
-// Set to 0.0 if your reference voltage is grounded
-// Set to 1200 (1.2 volts) if using the Adafruit board
+// Set to 0 if your reference voltage is grounded
+// Set to 1200 (1.24 volts) if using the Adafruit board
 // const int Vref = 0;
 const double Vref = 1.2362;
 
@@ -76,7 +76,7 @@ double Setpoint = 105;
 //double Kp = 3.5; working ok on 2018-09-14
 double Kp = 4.5;
 double Ki = 0.125;
-double Kd = 0.0;
+double Kd = 0.2;
 
 // PWM Window in milliseconds
 const int WindowSize = 5000;
@@ -99,11 +99,11 @@ bool operMode = true;
 double Input, Output;
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
 double PWMOutput;
-unsigned long windowStartTime;
+uint32_t windowStartTime;
 
 
 // Define the info needed for the temperature averaging
-const int numReadings = 32;
+const int numReadings = 8;
 int readings[numReadings];      // the readings from the analog input
 int readIndex = 0;              // the index of the current reading
 int total = 0;                  // the running total
@@ -112,7 +112,7 @@ int average = 0;                // the average
 // Thermocouple variables
 float Vout;
 float Vtc;
-// const float Vbits = brdVolts / 1023;;
+// const float Vbits = brdVolts / 1023; // ** Not needed with ADS1115 board
 
 // Corrected temperature readings for a K-type thermocouple
 // https://srdata.nist.gov/its90/type_k/kcoefficients_inverse.html
@@ -130,23 +130,23 @@ const double c9 = -1.052755E-08;
 
 
 // All timers reference the value of now
-unsigned long now = 0; //This variable is used to keep track of time
+uint32_t now = 0; //This variable is used to keep track of time
 
 // OLED display timer
 const int OLEDinterval = 200;           // interval at which to write new data to the OLED
-unsigned long previousOLEDMillis = now;            // will store last time OLED was updated
+uint32_t previousOLEDMillis = now;            // will store last time OLED was updated
 
 // Serial output timer
 const int serialPing = 500; //This determines how often we ping our loop
-unsigned long lastMessage = now; //This keeps track of when our loop last spoke to serial
+uint32_t lastMessage = now; //This keeps track of when our loop last spoke to serial
 
 int runTimeMins;
 long runTimeSecs;
-unsigned long runTimeStart = now;
+uint32_t runTimeStart = now;
 
 // ADC read interval
-const int ADCinterval = 100;           // interval at which to write new data to the OLED
-unsigned long previousADC = now;            // will store last time OLED was updated
+const int ADCinterval = 15;           // interval at which to write new data to the OLED
+uint32_t previousADC = now;            // will store last time OLED was updated
 
 // OLED Display setup
 #define OLED_SDA 14 // Arduino 14 = ESP8266 Pin 5
@@ -164,6 +164,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 // ADS1115 ADC
 int adcval;
 ADS1115 adc;
+
 
 uint32_t prevLoopMillis;
 uint32_t numLoops = 0;
@@ -263,9 +264,9 @@ void keepTime(void)
 
 int readADC()
 {
-  unsigned long currentADCMillis = now;
+  uint32_t currentADCMillis = now;
 
-  if (currentADCMillis - previousADC > 3) {
+  if (currentADCMillis - previousADC > ADCinterval) {
     static int read_triggered = 0;
     if (!read_triggered) {
       if (adc.trigger_sample() == 0)
@@ -284,28 +285,28 @@ int readADC()
 void readTemps(void)
 {
 
-  /*
-    // subtract the last reading:
-    total = total - readings[readIndex];
-    // Read the temps from the thermocouple
-    readings[readIndex] = readADC();
-    //readings[readIndex] = analogRead(ThermocouplePin);
-    // add the reading to the total:
-    total = total + readings[readIndex];
-    // advance to the next position in the array:
-    readIndex = readIndex + 1;
-    // if we're at the end of the array...
-    if (readIndex >= numReadings)
-    {
-      // ...wrap around to the beginning:
-      readIndex = 0;
-    }
 
-  */
+  // subtract the last reading:
+  total = total - readings[readIndex];
+  // Read the temps from the thermocouple
+  readings[readIndex] = readADC();
+  //readings[readIndex] = analogRead(ThermocouplePin);
+  // add the reading to the total:
+  total = total + readings[readIndex];
+  // advance to the next position in the array:
+  readIndex = readIndex + 1;
+  // if we're at the end of the array...
+  if (readIndex >= numReadings)
+  {
+    // ...wrap around to the beginning:
+    readIndex = 0;
+  }
+
+
 
   // calculate the average:
-  //average = total / numReadings;
-  average = readADC();
+  average = total / numReadings;
+  // average = readADC();
 
   // This should match the output voltage on the Out pin of the AD8945
   //  Vout = average * Vbits;
@@ -381,7 +382,7 @@ void trackloop() {
 
 void displayOLED(void)
 {
-  unsigned long currentOLEDMillis = now;
+  uint32_t currentOLEDMillis = now;
 
   if (currentOLEDMillis - previousOLEDMillis > OLEDinterval) {
     // save the last time you wrote to the OLED display
