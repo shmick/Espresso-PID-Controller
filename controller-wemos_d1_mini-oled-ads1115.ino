@@ -44,8 +44,8 @@
 // *****************************************
 
 // Replace with your own WiFi network credentials
-const char* ssid     = "shmick";
-const char* password = "SixNineTwoSix";
+const char* ssid     = "";
+const char* password = "";
 
 //#define ThermocouplePin 0 // Ardunio 0 = Wemos D1 Mini Pin A0
 #define RelayPin 4 // Ardunio D4 = Wemos D1 Mini Pin D2
