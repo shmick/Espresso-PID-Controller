@@ -7,13 +7,28 @@
   Smoothing: https://www.arduino.cc/en/Tutorial/Smoothing
   Arduino <> Wemos D1 Mini pins: https://github.com/esp8266/Arduino/blob/master/variants/d1_mini/pins_arduino.h
   ESP8266 file uploading https://tttapa.github.io/ESP8266/Chap12%20-%20Uploading%20to%20Server.html
+  
   Hardware:
   Wemos D1 Mini ( https://wiki.wemos.cc/products:d1:d1_mini )
   128 x 64 OLED Display using Adafruit_SSD1306 library
+  AD8495 Thermocouple Amplifier ( https://www.adafruit.com/product/1778 )
   ADS1115 16-Bit ADC using library from https://github.com/baruch/ADS1115
-  AD8495 Thermocouple Amplifier
-  Solid State Relay: "25A SSR-25 DA"
+  Solid State Relay ( Crydom TD1225 )
 */
+
+#define ADA_TC // Uncomment this if using the Adafruit TC board or similar boards with 1.25v reference
+
+#ifdef ADA_TC
+const int ADSGAIN = 2;
+const double Vref = 1.25;
+#else
+const int ADSGAIN = 16;
+const int Vref = 0;
+#endif
+
+// set to true for testing the code on the breadboard setup. This will set the hostname to xespresso
+const bool breadboard = true;
+
 #include <PID_v1.h>
 
 // Needed for the OLED display
@@ -37,8 +52,6 @@
 // Needed for ADS1115 ADC
 #include <ADS1115.h>
 
-//#include <ArduinoJson.h>
-
 // *****************************************
 // * Config options that you can customize *
 // *****************************************
@@ -50,17 +63,6 @@ const char* password = "";
 //#define ThermocouplePin 0 // ** Not needed with ADS1115 board
 #define RelayPin 4 // Ardunio D4 = Wemos D1 Mini Pin D2
 
-// Board voltage 3.3v or 5v for Arduino.
-// Set to 3.2 for ESP8266 units due to the voltage divider on ADC0
-// Best to measure between GND and VCC for most accurate readings
-//const double brdVolts = 3.2; // ** Not needed with ADS1115 board
-
-// Vref for AD8495 board (in millivolts)
-// Set to 0 if your reference voltage is grounded
-// Set to 1200 (1.24 volts) if using the Adafruit board
-// const int Vref = 0;
-const double Vref = 1.2362;
-
 // After powering on, how many minutes until we force the boiler to power down
 // Turning the machine off and on again will reset the timer
 const int maxRunTime = 180;
@@ -68,8 +70,10 @@ const int maxRunTime = 180;
 // Turn the display off after 200 minutes
 const int maxDisplayMins = 200;
 
+// Default to being ON
+bool operMode = true;
+
 // Define the PID setpoint
-//double Setpoint = 105;
 double Setpoint = 105;
 
 // Define the PID tuning Parameters
@@ -81,17 +85,10 @@ double Kd = 0.2;
 // PWM Window in milliseconds
 const int WindowSize = 5000;
 
-// ESP8266 WiFi Details
-//WiFiServer server(80);
-ESP8266WebServer server(80);
-// Variable to store the HTTP request
-String header;
-
-// Default to being ON
-bool operMode = true;
-
+// ***********************************************************
 // ***********************************************************
 // * There should be no need to tweak many things below here *
+// ***********************************************************
 // ***********************************************************
 
 // PID variables
@@ -101,7 +98,6 @@ PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
 double PWMOutput;
 uint32_t windowStartTime;
 
-
 // Define the info needed for the temperature averaging
 const int numReadings = 8;
 int readings[numReadings];      // the readings from the analog input
@@ -110,7 +106,7 @@ int total = 0;                  // the running total
 int average = 0;                // the average
 
 // Thermocouple variables
-float Vout;
+float Vout; // The voltage coming from the out pin on the TC amp
 float Vtc;
 // const float Vbits = brdVolts / 1023; // ** Not needed with ADS1115 board
 
@@ -128,12 +124,16 @@ const double c7 = -4.413030E-05;
 const double c8 = 1.057734E-06;
 const double c9 = -1.052755E-08;
 
+// ESP8266 WiFi Details
+ESP8266WebServer server(80);
+// Variable to store the HTTP request
+String header;
 
 // All timers reference the value of now
 uint32_t now = 0; //This variable is used to keep track of time
 
 // OLED display timer
-const int OLEDinterval = 200;           // interval at which to write new data to the OLED
+const int OLEDinterval = 250;           // interval at which to write new data to the OLED
 uint32_t previousOLEDMillis = now;            // will store last time OLED was updated
 
 // Serial output timer
@@ -144,18 +144,24 @@ int runTimeMins;
 long runTimeSecs;
 uint32_t runTimeStart = now;
 
-// ADC read interval
-const int ADCinterval = 15;           // interval at which to write new data to the OLED
-uint32_t previousADC = now;            // will store last time OLED was updated
+// Temp read interval
+const int TempInterval = 5;
+uint32_t currentTempMillis;
+uint32_t previousTempMillis = now;
+
+// Server tasks interval
+const int serverInterval = 50;
+uint32_t currentServerMillis;
+uint32_t previousServerMillis = now;
 
 // OLED Display setup
-#define OLED_SDA 14 // Arduino 14 = ESP8266 Pin 5
-#define OLED_SCL 12 // Arduino 12 = ESP8266 Pin 6
+#define ESP_SDA 14 // Arduino 14 = ESP8266 Pin 5
+#define ESP_SCL 12 // Arduino 12 = ESP8266 Pin 6
 #define OLED_RESET 16
 #define OLED_I2C 0x3C
 Adafruit_SSD1306 display(OLED_RESET);
 #if (SSD1306_LCDHEIGHT != 64)
-#error("Height incorrect, please fix Adafruit_SSD1306.h!");
+#error("Height incorrect, please fix Adafruit_SSD1306.h");
 // You will need to modify the Adafruit_SSD1306.h file
 // Step 1: uncomment this line: #define SSD1306_128_64
 // Step 2: add a comment to this line: #define SSD1306_128_32
@@ -164,7 +170,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 // ADS1115 ADC
 int adcval;
 ADS1115 adc;
-
+float ADS_PGA;
 
 uint32_t prevLoopMillis;
 uint32_t numLoops = 0;
@@ -192,8 +198,8 @@ void setup()
   }
 
   // Enable I2C communication
-  Wire.setClock(800000L); // ESP8266 Only
-  Wire.begin(OLED_SDA, OLED_SCL);
+  Wire.setClock(400000L); // ESP8266 Only
+  Wire.begin(ESP_SDA, ESP_SCL);
 
   // Setup the OLED display
   display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C);  // initialize with the I2C addr 0x3C (for the 128x32)
@@ -205,14 +211,42 @@ void setup()
   // Setup ADS1115
   adc.begin();
   adc.set_data_rate(ADS1115_DATA_RATE_860_SPS);
-  // adc.set_mode(ADS1115_MODE_CONTINUOUS);
   adc.set_mode(ADS1115_MODE_SINGLE_SHOT);
   adc.set_mux(ADS1115_MUX_GND_AIN0);
-  adc.set_pga(ADS1115_PGA_TWO);
-  // adc.set_pga(ADS1115_PGA_FOUR);
 
-  // only enable this with ADS1115_MODE_CONTINUOUS
-  // adc.trigger_sample();
+  //  TWO_THIRDS // 2/3x gain +/- 6.144V  1 bit = 0.1875mV
+  //  ONE        // 1x gain   +/- 4.096V  1 bit = 0.125mV
+  //  TWO        // 2x gain   +/- 2.048V  1 bit = 0.0625mV
+  //  FOUR       // 4x gain   +/- 1.024V  1 bit = 0.03125mV
+  //  EIGHT      // 8x gain   +/- 0.512V  1 bit = 0.015625mV
+  //  SIXTEEN    // 16x gain  +/- 0.256V  1 bit = 0.0078125mV
+
+  if ( ADSGAIN == 23 ) {
+    adc.set_pga(ADS1115_PGA_TWO_THIRDS);
+    ADS_PGA = 0.1875;
+  }
+  else if ( ADSGAIN == 1 ) {
+    adc.set_pga(ADS1115_PGA_ONE);
+    ADS_PGA = 0.125;
+  }
+  else if ( ADSGAIN == 2 ) {
+    adc.set_pga(ADS1115_PGA_TWO);
+    ADS_PGA = 0.0625;
+  }
+  else if ( ADSGAIN == 4 ) {
+    adc.set_pga(ADS1115_PGA_FOUR);
+    ADS_PGA = 0.03125;
+  }
+  else if ( ADSGAIN == 8 ) {
+    adc.set_pga(ADS1115_PGA_EIGHT);
+    ADS_PGA = 0.015625;
+  }
+  else if ( ADSGAIN == 16 ) {
+    adc.set_pga(ADS1115_PGA_SIXTEEN);
+    ADS_PGA = 0.0078125;
+  }
+
+
 
   // Connect to Wi-Fi network with SSID and password
   WiFi.begin(ssid, password);
@@ -246,10 +280,23 @@ void setup()
   server.on("/set", HTTP_POST, handleSetvals);
   server.begin();
 
-  ArduinoOTA.setHostname("Wemos D1 Mni - espresso");  // For OTA - change name here to help identify device.
-  ArduinoOTA.begin();  // For OTA
+  if ( breadboard == true ) {
+    ArduinoOTA.setHostname("Wemos D1 Mini - breadboard");
+    ArduinoOTA.begin();  // For OTA
+    delay(10);
+    MDNS.begin("xespresso");
+  }
+  else if ( breadboard == false ) {
+    ArduinoOTA.setHostname("Wemos D1 Mini - espresso");
+    ArduinoOTA.begin();  // For OTA
+    delay(10);
+    MDNS.begin("espresso");
+  }
 
-  MDNS.begin("espresso");
+  //  if ( WiFi.hostname() == "ESP_AA8818" ) {
+  //    operMode = false;
+  //  }
+
 } // end of setup()
 
 
@@ -264,73 +311,67 @@ void keepTime(void)
 
 int readADC()
 {
-  uint32_t currentADCMillis = now;
-
-  if (currentADCMillis - previousADC > ADCinterval) {
-    static int read_triggered = 0;
-    if (!read_triggered) {
-      if (adc.trigger_sample() == 0)
-        read_triggered = 1;
-    } else {
-      if (!adc.is_sample_in_progress()) {
-        adcval = adc.read_sample();
-        read_triggered = 0;
-      }
+  static int read_triggered = 0;
+  if (!read_triggered) {
+    if (adc.trigger_sample() == 0)
+      read_triggered = 1;
+  } else {
+    if (!adc.is_sample_in_progress()) {
+      adcval = adc.read_sample();
+      read_triggered = 0;
     }
-    previousADC = currentADCMillis;
   }
   return adcval;
 }
 
+
 void readTemps(void)
 {
+  currentTempMillis = now;
+  if (currentTempMillis - previousTempMillis > TempInterval) {
 
+    // subtract the last reading:
+    total = total - readings[readIndex];
+    // Read the temps from the thermocouple
+    readings[readIndex] = readADC();
+    // add the reading to the total:
+    total = total + readings[readIndex];
+    // advance to the next position in the array:
+    readIndex = readIndex + 1;
+    // if we're at the end of the array...
+    if (readIndex >= numReadings)
+    {
+      // ...wrap around to the beginning:
+      readIndex = 0;
+    }
 
-  // subtract the last reading:
-  total = total - readings[readIndex];
-  // Read the temps from the thermocouple
-  readings[readIndex] = readADC();
-  //readings[readIndex] = analogRead(ThermocouplePin);
-  // add the reading to the total:
-  total = total + readings[readIndex];
-  // advance to the next position in the array:
-  readIndex = readIndex + 1;
-  // if we're at the end of the array...
-  if (readIndex >= numReadings)
-  {
-    // ...wrap around to the beginning:
-    readIndex = 0;
+    // calculate the average:
+    average = total / numReadings;
+
+    // This should match the output voltage on the Out pin of the AD8945
+    Vout = average * ADS_PGA / 1000;
+
+    // Based on Analog Devices AN-1087
+    // Convert the AD8495 output back to millivolts so we can perform the NIST calc
+    Vtc = ((Vout * 1000) - (Vref * 1000) - 1.25) / 122.4;
+
+    // Use the NIST corrected temperature readings for a K-type thermocouple in the 0-500°C range
+    // https://srdata.nist.gov/its90/type_k/kcoefficients_inverse.html
+    Input = c0
+            + c1 * Vtc
+            + c2 * pow(Vtc, 2)
+            + c3 * pow(Vtc, 3)
+            + c4 * pow(Vtc, 4)
+            + c5 * pow(Vtc, 5)
+            + c6 * pow(Vtc, 6)
+            + c7 * pow(Vtc, 7)
+            + c8 * pow(Vtc, 8)
+            + c9 * pow(Vtc, 9);
+
+    previousTempMillis = currentTempMillis;
   }
-
-
-
-  // calculate the average:
-  average = total / numReadings;
-  // average = readADC();
-
-  // This should match the output voltage on the Out pin of the AD8945
-  //  Vout = average * Vbits;
-  // Vout = average * 0.125 / 1000; // ADS1115_PGA_ONE
-  Vout = average * 0.0625 / 1000; // ADS1115_PGA_TWO
-  // Vout = average * 0.03125 / 1000; // ADS1115_PGA_FOUR
-
-  // Based on Analog Devices AN-1087
-  // Convert the AD8495 output back to millivolts so we can perform the NIST calc
-  Vtc = ((Vout * 1000) - (Vref * 1000) - 1.25) / 122.4;
-
-  // Use the NIST corrected temperature readings for a K-type thermocouple in the 0-500°C range
-  // https://srdata.nist.gov/its90/type_k/kcoefficients_inverse.html
-  Input = c0
-          + c1 * Vtc
-          + c2 * pow(Vtc, 2)
-          + c3 * pow(Vtc, 3)
-          + c4 * pow(Vtc, 4)
-          + c5 * pow(Vtc, 5)
-          + c6 * pow(Vtc, 6)
-          + c7 * pow(Vtc, 7)
-          + c8 * pow(Vtc, 8)
-          + c9 * pow(Vtc, 9);
 }
+
 
 void relayControl(void)
 {
@@ -413,7 +454,7 @@ void displayOLED(void)
       display.setFont(&FreeSerifBold18pt7b);
       display.setCursor(60, 60);
       // Dont add a decimal place for 100 or 0
-      if ( (Output >= 100) || (Output == 0) )
+      if ( (Output >= 100.0) || (Output == 0.0) )
       {
         display.print(Output, 0);
       }
@@ -482,25 +523,6 @@ void handleStats() {
   server.send(200, "text/html", message);
 }
 
-/*
-  void handleJSON() {
-  StaticJsonBuffer<200> jsonBuffer;
-  JsonObject& root = jsonBuffer.createObject();
-  root["Runtime"] = runTimeSecs;
-  root["Uptime"] = (now / 1000);
-  root["Setpoint"] = Setpoint;
-  root["Input"] = Input;
-  root["Output"] = Output;
-  root["ADC"] = average;
-  root["Vout"] = Vout;
-  root["Mode"] = operMode;
-  root["Loops"] = currLoops;
-  String json;
-  root.prettyPrintTo(json);
-  server.send(200, "application/json", json);
-  }
-*/
-
 
 // ESP8266WebServer handler
 void handleJSON() {
@@ -553,6 +575,7 @@ void handleSetvals() {
   server.send(200, "text/plain", message);
 }
 
+
 // ESP8266WebServer handler
 String getContentType(String filename) { // convert the file extension to the MIME type
   if (filename.endsWith(".html")) return "text/html";
@@ -578,6 +601,7 @@ bool handleFileRead(String path) { // send the right file to the client (if it e
   Serial.println("\tFile Not Found");
   return false;                                         // If the file doesn't exist, return false
 }
+
 
 // ESP8266WebServer handler
 void handleFileUpload() { // upload a new file to the SPIFFS
@@ -605,6 +629,16 @@ void handleFileUpload() { // upload a new file to the SPIFFS
 }
 
 
+void esp8266Tasks() {
+  currentServerMillis = now;
+  if (currentServerMillis - previousServerMillis > serverInterval) {
+    server.handleClient();
+    ArduinoOTA.handle();
+    previousServerMillis = currentServerMillis;
+  }
+}
+
+
 void loop()
 {
   keepTime();
@@ -612,7 +646,5 @@ void loop()
   relayControl();
   trackloop();
   displayOLED();
-  yield();
-  server.handleClient();
-  ArduinoOTA.handle();
+  esp8266Tasks();
 } // End of loop()
