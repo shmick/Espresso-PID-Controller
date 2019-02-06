@@ -7,7 +7,7 @@
   Smoothing: https://www.arduino.cc/en/Tutorial/Smoothing
   Arduino <> Wemos D1 Mini pins: https://github.com/esp8266/Arduino/blob/master/variants/d1_mini/pins_arduino.h
   ESP8266 file uploading https://tttapa.github.io/ESP8266/Chap12%20-%20Uploading%20to%20Server.html
-  
+
   Hardware:
   Wemos D1 Mini ( https://wiki.wemos.cc/products:d1:d1_mini )
   128 x 64 OLED Display using Adafruit_SSD1306 library
@@ -20,14 +20,14 @@
 
 #ifdef ADA_TC
 const int ADSGAIN = 2;
-const double Vref = 1.25;
+const double Vref = 1.2362;
 #else
 const int ADSGAIN = 16;
 const int Vref = 0;
 #endif
 
 // set to true for testing the code on the breadboard setup. This will set the hostname to xespresso
-const bool breadboard = true;
+const bool breadboard = false;
 
 #include <PID_v1.h>
 
@@ -49,16 +49,16 @@ const bool breadboard = true;
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
+// Use WiFiManager for setting SSID and Password
+#include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
+#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
+
 // Needed for ADS1115 ADC
 #include <ADS1115.h>
 
 // *****************************************
 // * Config options that you can customize *
 // *****************************************
-
-// Replace with your own WiFi network credentials
-const char* ssid     = "";
-const char* password = "";
 
 //#define ThermocouplePin 0 // ** Not needed with ADS1115 board
 #define RelayPin 4 // Ardunio D4 = Wemos D1 Mini Pin D2
@@ -175,129 +175,6 @@ float ADS_PGA;
 uint32_t prevLoopMillis;
 uint32_t numLoops = 0;
 uint32_t currLoops = 0;
-
-void setup()
-{
-  Serial.begin(115200); //Start a serial session
-  lastMessage = now; // timestamp
-
-  // Set the Relay to output mode and ensure the relay is off
-  pinMode(RelayPin, OUTPUT);
-  digitalWrite(RelayPin, LOW);
-
-  // PID settings
-  windowStartTime = now;
-
-  myPID.SetOutputLimits(0, 100);
-  myPID.SetSampleTime(100);
-
-  // initialize all the readings to 0:
-  for (int thisReading = 0; thisReading < numReadings; thisReading++)
-  {
-    readings[thisReading] = 0;
-  }
-
-  // Enable I2C communication
-  Wire.setClock(400000L); // ESP8266 Only
-  Wire.begin(ESP_SDA, ESP_SCL);
-
-  // Setup the OLED display
-  display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C);  // initialize with the I2C addr 0x3C (for the 128x32)
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.display();
-
-  // Setup ADS1115
-  adc.begin();
-  adc.set_data_rate(ADS1115_DATA_RATE_860_SPS);
-  adc.set_mode(ADS1115_MODE_SINGLE_SHOT);
-  adc.set_mux(ADS1115_MUX_GND_AIN0);
-
-  //  TWO_THIRDS // 2/3x gain +/- 6.144V  1 bit = 0.1875mV
-  //  ONE        // 1x gain   +/- 4.096V  1 bit = 0.125mV
-  //  TWO        // 2x gain   +/- 2.048V  1 bit = 0.0625mV
-  //  FOUR       // 4x gain   +/- 1.024V  1 bit = 0.03125mV
-  //  EIGHT      // 8x gain   +/- 0.512V  1 bit = 0.015625mV
-  //  SIXTEEN    // 16x gain  +/- 0.256V  1 bit = 0.0078125mV
-
-  if ( ADSGAIN == 23 ) {
-    adc.set_pga(ADS1115_PGA_TWO_THIRDS);
-    ADS_PGA = 0.1875;
-  }
-  else if ( ADSGAIN == 1 ) {
-    adc.set_pga(ADS1115_PGA_ONE);
-    ADS_PGA = 0.125;
-  }
-  else if ( ADSGAIN == 2 ) {
-    adc.set_pga(ADS1115_PGA_TWO);
-    ADS_PGA = 0.0625;
-  }
-  else if ( ADSGAIN == 4 ) {
-    adc.set_pga(ADS1115_PGA_FOUR);
-    ADS_PGA = 0.03125;
-  }
-  else if ( ADSGAIN == 8 ) {
-    adc.set_pga(ADS1115_PGA_EIGHT);
-    ADS_PGA = 0.015625;
-  }
-  else if ( ADSGAIN == 16 ) {
-    adc.set_pga(ADS1115_PGA_SIXTEEN);
-    ADS_PGA = 0.0078125;
-  }
-
-
-
-  // Connect to Wi-Fi network with SSID and password
-  WiFi.begin(ssid, password);
-  int count = 1;
-  while ((count <= 60) && (WiFi.status() != WL_CONNECTED)) {
-    delay(500);
-    count = count + 1;
-  }
-
-  SPIFFS.begin();
-
-  server.on("/upload", HTTP_GET, []() {                 // if the client requests the upload page
-    if (!handleFileRead("/upload.html"))                // send it if it exists
-      server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
-  });
-
-  server.on("/upload", HTTP_POST,                       // if the client posts to the upload page
-  []() {
-    server.send(200);
-  },                          // Send status 200 (OK) to tell the client we are ready to receive
-  handleFileUpload                                    // Receive and save the file
-           );
-
-  server.onNotFound([]() {                              // If the client requests any URI
-    if (!handleFileRead(server.uri()))                  // send it if it exists
-      server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
-  });
-
-  server.on("/stats", handleStats); //Reads ADC function is called from out index.html
-  server.on("/json", handleJSON);
-  server.on("/set", HTTP_POST, handleSetvals);
-  server.begin();
-
-  if ( breadboard == true ) {
-    ArduinoOTA.setHostname("Wemos D1 Mini - breadboard");
-    ArduinoOTA.begin();  // For OTA
-    delay(10);
-    MDNS.begin("xespresso");
-  }
-  else if ( breadboard == false ) {
-    ArduinoOTA.setHostname("Wemos D1 Mini - espresso");
-    ArduinoOTA.begin();  // For OTA
-    delay(10);
-    MDNS.begin("espresso");
-  }
-
-  //  if ( WiFi.hostname() == "ESP_AA8818" ) {
-  //    operMode = false;
-  //  }
-
-} // end of setup()
 
 
 void keepTime(void)
@@ -637,6 +514,133 @@ void esp8266Tasks() {
     previousServerMillis = currentServerMillis;
   }
 }
+
+
+void configADC(void)
+{
+  // Setup ADS1115
+  adc.begin();
+  adc.set_data_rate(ADS1115_DATA_RATE_860_SPS);
+  adc.set_mode(ADS1115_MODE_SINGLE_SHOT);
+  adc.set_mux(ADS1115_MUX_GND_AIN0);
+
+  //  TWO_THIRDS // 2/3x gain +/- 6.144V  1 bit = 0.1875mV
+  //  ONE        // 1x gain   +/- 4.096V  1 bit = 0.125mV
+  //  TWO        // 2x gain   +/- 2.048V  1 bit = 0.0625mV
+  //  FOUR       // 4x gain   +/- 1.024V  1 bit = 0.03125mV
+  //  EIGHT      // 8x gain   +/- 0.512V  1 bit = 0.015625mV
+  //  SIXTEEN    // 16x gain  +/- 0.256V  1 bit = 0.0078125mV
+
+  if ( ADSGAIN == 23 ) {
+    adc.set_pga(ADS1115_PGA_TWO_THIRDS);
+    ADS_PGA = 0.1875;
+  }
+  else if ( ADSGAIN == 1 ) {
+    adc.set_pga(ADS1115_PGA_ONE);
+    ADS_PGA = 0.125;
+  }
+  else if ( ADSGAIN == 2 ) {
+    adc.set_pga(ADS1115_PGA_TWO);
+    ADS_PGA = 0.0625;
+  }
+  else if ( ADSGAIN == 4 ) {
+    adc.set_pga(ADS1115_PGA_FOUR);
+    ADS_PGA = 0.03125;
+  }
+  else if ( ADSGAIN == 8 ) {
+    adc.set_pga(ADS1115_PGA_EIGHT);
+    ADS_PGA = 0.015625;
+  }
+  else if ( ADSGAIN == 16 ) {
+    adc.set_pga(ADS1115_PGA_SIXTEEN);
+    ADS_PGA = 0.0078125;
+  }
+}
+
+
+void wifiServer(void)
+{
+  server.on("/upload", HTTP_GET, []() {                 // if the client requests the upload page
+    if (!handleFileRead("/upload.html"))                // send it if it exists
+      server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
+  });
+
+  server.on("/upload", HTTP_POST,                       // if the client posts to the upload page
+  []() {
+    server.send(200);
+  },                          // Send status 200 (OK) to tell the client we are ready to receive
+  handleFileUpload                                    // Receive and save the file
+           );
+
+  server.onNotFound([]() {                              // If the client requests any URI
+    if (!handleFileRead(server.uri()))                  // send it if it exists
+      server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
+  });
+
+
+  server.on("/stats", handleStats); //Reads ADC function is called from out index.html
+  server.on("/json", handleJSON);
+  server.on("/set", HTTP_POST, handleSetvals);
+  server.begin();
+}
+
+void setup()
+{
+  Serial.begin(115200); //Start a serial session
+  lastMessage = now; // timestamp
+
+  // Set the Relay to output mode and ensure the relay is off
+  pinMode(RelayPin, OUTPUT);
+  digitalWrite(RelayPin, LOW);
+
+  // PID settings
+  windowStartTime = now;
+
+  myPID.SetOutputLimits(0, 100);
+  myPID.SetSampleTime(100);
+
+  // initialize all the readings to 0:
+  for (int thisReading = 0; thisReading < numReadings; thisReading++)
+  {
+    readings[thisReading] = 0;
+  }
+
+  // Enable I2C communication
+  Wire.setClock(400000L); // ESP8266 Only
+  Wire.begin(ESP_SDA, ESP_SCL);
+
+  // Setup the OLED display
+  display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C);  // initialize with the I2C addr 0x3C (for the 128x32)
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+  display.setTextSize(1);
+  display.display();
+
+  configADC();
+
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(180);
+  wm.autoConnect();
+
+  SPIFFS.begin();
+
+  wifiServer();
+
+  if ( breadboard == true ) {
+    ArduinoOTA.setHostname("Wemos D1 Mini - breadboard");
+    ArduinoOTA.begin();  // For OTA
+    delay(10);
+    MDNS.begin("xespresso");
+  }
+  else if ( breadboard == false ) {
+    ArduinoOTA.setHostname("Wemos D1 Mini - espresso");
+    ArduinoOTA.begin();  // For OTA
+    delay(10);
+    MDNS.begin("espresso");
+  }
+
+
+} // end of setup()
 
 
 void loop()
