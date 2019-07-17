@@ -31,7 +31,7 @@ const int Vref = 0;
 const bool breadboard = false;
 
 // set to 0 if not using the OLED display
-#define OLED_DISPLAY 0
+#define OLED_DISPLAY 1
 
 #include <PID_v1.h>
 
