@@ -1,6 +1,6 @@
 ## PCB Files!
 
-I used [EasyEDA](https://easyeda.com/) to for the schematic and PCB. The files included here should be everything needed.
+I used [EasyEDA](https://easyeda.com/) to create the schematic and PCB. The files included here should be everything needed.
 
 If you'd like to have your own PCB made, you can use [EspressoPID_Gerber.zip](https://github.com/shmick/Espresso-PID-Controller/blob/master/PCB/EspressoPID_Gerber.zip)
 
