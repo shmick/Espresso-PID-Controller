@@ -1,0 +1,8 @@
+- platform: command_line
+  scan_interval: 120
+  switches:
+    espresso_control:
+      friendly_name: Espresso Operation Mode
+      command_on: 'curl -m 3 -s -d "opmode=on" "http://192.168.1.240/set"'
+      command_off: 'curl -m 3 -s -d "opmode=off" "http://192.168.1.240/set"'
+      command_state: 'curl -m 3 -s 192.168.1.240/stats | grep -oP "OperMode: 1"'

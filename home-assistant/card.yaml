@@ -1,0 +1,26 @@
+cards:
+  - cards:
+      - entity: sensor.espresso_input
+        icon: "hass:thermometer"
+        name: Boiler Temp
+        type: entity
+        unit: C
+      - entity: sensor.espresso_runtime
+        icon: "hass:clock"
+        name: Controller Runtime
+        type: entity
+        unit: Minutes
+    type: horizontal-stack
+  - entities:
+      - entity: switch.espresso_machine
+        icon: "mdi:coffee"
+        name: Wemo Outlet
+        state_color: true
+      - entity: switch.espresso_control
+        icon: "mdi:coffee-to-go"
+        name: PID Controller Mode
+        state_color: true
+    show_header_toggle: false
+    title: Espresso Machine
+    type: entities
+type: vertical-stack
