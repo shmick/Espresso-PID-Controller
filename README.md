@@ -5,6 +5,10 @@ The slow responding and somewhat innacturate bimetal coffee thermostat is replac
 connected to an Arduino controller that controls a Solid State Relay (SSR) to control power to the small boiler inside
 the espresso machine.
 
+### 2020-12-06 Update
+* Added PCB files
+* Code still needs to be updated to use the steam switch input
+
 ## Current file
 Use [controller-iotwebconf.ino](https://github.com/shmick/Espresso-PID-Controller/blob/master/controller-iotwebconf.ino)
 
