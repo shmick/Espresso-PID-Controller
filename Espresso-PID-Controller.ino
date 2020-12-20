@@ -16,22 +16,13 @@
   Solid State Relay ( Crydom TD1225 )
 */
 
-// Set to 1 if using the Adafruit TC board or similar boards with 1.25v reference
-#define ADA_TC 1
+#define CONFIG_VERSION "2020-12-20-r00"
 
-#if ADA_TC == 1
 const int ADSGAIN = 2;
-const double Vref = 1.2362;
-#else
-const int ADSGAIN = 16;
-const int Vref = 0;
-#endif
+const double Vref = 1.2516;
 
-// set to true for testing the code on the breadboard setup. This will set the hostname to xespresso
-const bool breadboard = false;
-
-// set to 0 if not using the OLED display
-#define OLED_DISPLAY 1
+// set to 1 if using the OLED display. Disabled by default.
+#define OLED_DISPLAY 0
 
 #include <PID_v1.h>
 
@@ -45,33 +36,29 @@ const bool breadboard = false;
 #include <Fonts/FreeSans9pt7b.h>
 #endif
 
-// Needed for ESP8266
-#include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
-#include <FS.h>   //Include File System Headers
-
-// Needed for pushing new sketches over WiFi
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
-
 // Needed for IotWebConf https://github.com/prampec/IotWebConf
 #include <DNSServer.h>
 #include <IotWebConf.h>
 
 // Needed for ADS1115 ADC
-#include <ADS1115.h>
+#include "src/ADS1115/ADS1115.h"
 
 // *****************************************
 // * Config options that you can customize *
 // *****************************************
 
-//#define ThermocouplePin 0 // ** Not needed with ADS1115 board
 #define RelayPin 4 // Ardunio D4 = Wemos D1 Mini Pin D2
+#define SteamPin 2 // Arduino D2 = Wemos D1 Mini Pin D4
 
 // After powering on, how many minutes until we force the boiler to power down
 // Turning the machine off and on again will reset the timer
 const int maxRunTime = 180;
+
+// Max time the steam switch can be toggled to reset the operMode state to true
+const int steamReset = 3;
+
+// Max number of minutes we can remain in steam mode
+const int steamMaxMins = 10;
 
 // Turn the display off after 200 minutes
 const int maxDisplayMins = 200;
@@ -79,8 +66,11 @@ const int maxDisplayMins = 200;
 // Default to being ON
 bool operMode = true;
 
-// Define the PID setpoint
-double Setpoint = 105;
+// Define the PID setpoints
+double Setpoint = 105; // This will be the default coffee setpoint
+
+const double CoffeeSetpoint = Setpoint;
+const double SteamSetpoint = 125;
 
 // Define the PID tuning Parameters
 //double Kp = 3.5; working ok on 2018-09-14
@@ -92,10 +82,9 @@ double Kd = 0.2;
 const int WindowSize = 5000;
 
 // -- Initial name of the Thing. Used e.g. as SSID of the own Access Point.
-const char thingName[] = "espresso";
+const char thingName[] = "baby";
 // -- Initial password to connect to the Thing, when it creates an own Access Point.
 const char wifiInitialApPassword[] = "espresso";
-
 
 
 // ***********************************************************
@@ -137,8 +126,10 @@ const double c7 = -4.413030E-05;
 const double c8 = 1.057734E-06;
 const double c9 = -1.052755E-08;
 
+// IotWebConf
 DNSServer dnsServer;
 WebServer server(80);
+HTTPUpdateServer httpUpdater;
 IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 // Variable to store the HTTP request
@@ -169,9 +160,17 @@ const int serverInterval = 50;
 uint32_t currentServerMillis;
 uint32_t previousServerMillis = now;
 
+// Reset the operation mode to true by toggling the steam switch for less than 3 secconds
+bool steamMode = false;
+bool steamTimer = false;
+int steamVal;
+uint32_t steamTimeStart;
+uint32_t steamTimeMillis;
+
+
 // Setup I2C pins
-#define ESP_SDA 14 // Arduino 14 = ESP8266 Pin 5
-#define ESP_SCL 12 // Arduino 12 = ESP8266 Pin 6
+#define ESP_SCL 14 // Arduino 14 = ESP8266 Pin 5
+#define ESP_SDA 12 // Arduino 12 = ESP8266 Pin 6
 
 #if OLED_DISPLAY == 1
 // OLED Display setup
@@ -306,6 +305,52 @@ void relayControl(void)
 }
 
 
+void steamSwitch() {
+  // set the  value of steamMode based on steamVal
+  steamVal = digitalRead(SteamPin);
+  if (steamVal == LOW) {
+    steamMode = true ;
+  }
+  else if (steamVal == HIGH) {
+    steamMode = false ;
+  }
+
+  // set the steamTimer value only when the steamMode changes state
+  if ( steamMode && !steamTimer ) {
+    steamTimer = true;
+    steamTimeStart = now;
+  } else if ( !steamMode && steamTimer ) {
+    steamTimer = false;
+  }
+
+  // If steamTimer is true, update steamTimeMillis
+  if ( steamTimer ) {
+    steamTimeMillis = now - steamTimeStart;
+  }
+
+  // if steamMode is now false, check to see if we should set operMode to true
+  if ( !steamMode && steamTimeMillis > 0 ) {
+    if ( steamTimeMillis / 1000 <= steamReset ) {
+      operMode = true;
+      runTimeStart = now;
+      steamTimeMillis = 0;
+    }
+  }
+
+  // This must be the last if statement. It's a safety check to ensure
+  // that we set operMode to false if the steam switch has been on too long
+  if ( steamTimeMillis / 1000 / 60 >= steamMaxMins ) {
+    operMode = false;
+  }
+  else if ( steamMode && operMode && Setpoint != SteamSetpoint) {
+    Setpoint = SteamSetpoint;
+  }
+  else if ( !steamMode && operMode && Setpoint != CoffeeSetpoint) {
+    Setpoint = CoffeeSetpoint;
+  }
+}
+
+
 // Track how many loops per second are executed.
 void trackloop() {
   if ( now - prevLoopMillis >= 1000) {
@@ -315,6 +360,7 @@ void trackloop() {
   }
   numLoops++;
 }
+
 
 #if OLED_DISPLAY == 1
 void displayOLED(void)
@@ -383,6 +429,7 @@ void displayOLED(void)
 }
 #endif
 
+
 void displaySerial(void)
 {
   // Output some data to serial to see what's happening
@@ -402,6 +449,7 @@ void displaySerial(void)
     lastMessage = now; //update the time stamp.
   }
 }
+
 
 // ESP8266WebServer handler
 void handleRoot()
@@ -427,12 +475,13 @@ void handleStats() {
   message +=  "<h1>\n";
   message += "Time: " + String(runTimeSecs) + "<br>\n";
   message += "Setpoint: " + String(Setpoint) + "<br>\n";
-  message +=  "PID Input:  " + String(Input) + "<br>\n";
-  message +=  "PID Output: " + String(Output) + "<br>\n";
-  message +=  "Avg: " + String(average) + "<br>\n";
-  message +=  "Vout: " + String(Vout) + "<br>\n";
-  message +=  "Loops: " + String(currLoops) + "<br>\n";
-  message +=  "OperMode: " + String(operMode);
+  message += "PID Input:  " + String(Input) + "<br>\n";
+  message += "PID Output: " + String(Output) + "<br>\n";
+  message += "Avg: " + String(average) + "<br>\n";
+  message += "Vout: " + String(Vout) + "<br>\n";
+  message += "Loops: " + String(currLoops) + "<br>\n";
+  message += "OperMode: " + String(operMode) + "<br>\n";
+  message += "SteamMode: " + String(steamMode);
   server.send(200, "text/html", message);
 }
 
@@ -450,7 +499,8 @@ void handleJSON() {
   message +=  "\"ADC\":" + String(average) + comma;
   message +=  "\"Vout\":" + String(Vout) + comma;
   message +=  "\"Mode\":" + String(operMode) + comma;
-  message +=  "\"Loops\":" + String(currLoops);
+  message +=  "\"Loops\":" + String(currLoops) + comma;
+  message += "\"steamMode\":" + String(steamMode);
   message += " }";
   server.send(200, "application/json", message);
 }
@@ -500,54 +550,10 @@ String getContentType(String filename) { // convert the file extension to the MI
 }
 
 
-// ESP8266WebServer handler
-bool handleFileRead(String path) { // send the right file to the client (if it exists)
-  //Serial.println("handleFileRead: " + path);
-  if (path.endsWith("/")) path += "index.html";         // If a folder is requested, send the index file
-  String contentType = getContentType(path);            // Get the MIME type
-  if (SPIFFS.exists(path)) {                            // If the file exists
-    File file = SPIFFS.open(path, "r");                 // Open it
-    size_t sent = server.streamFile(file, contentType); // And send it to the client
-    file.close();                                       // Then close the file again
-    return true;
-  }
-  Serial.println("\tFile Not Found");
-  return false;                                         // If the file doesn't exist, return false
-}
-
-
-// ESP8266WebServer handler
-void handleFileUpload() { // upload a new file to the SPIFFS
-  File fsUploadFile;              // a File object to temporarily store the received file
-  HTTPUpload& upload = server.upload();
-  if (upload.status == UPLOAD_FILE_START) {
-    String filename = upload.filename;
-    if (!filename.startsWith("/")) filename = "/" + filename;
-    //Serial.print("handleFileUpload Name: "); Serial.println(filename);
-    fsUploadFile = SPIFFS.open(filename, "w");            // Open the file for writing in SPIFFS (create if it doesn't exist)
-    filename = String();
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    if (fsUploadFile)
-      fsUploadFile.write(upload.buf, upload.currentSize); // Write the received bytes to the file
-  } else if (upload.status == UPLOAD_FILE_END) {
-    if (fsUploadFile) {                                   // If the file was successfully created
-      fsUploadFile.close();                               // Close the file again
-      //Serial.print("handleFileUpload Size: "); Serial.println(upload.totalSize);
-      server.sendHeader("Location", "/success.html");     // Redirect the client to the success page
-      server.send(303);
-    } else {
-      server.send(500, "text/plain", "500: couldn't create file");
-    }
-  }
-}
-
-
 void esp8266Tasks() {
   currentServerMillis = now;
   if (currentServerMillis - previousServerMillis > serverInterval) {
     iotWebConf.doLoop();
-    server.handleClient();
-    ArduinoOTA.handle();
     previousServerMillis = currentServerMillis;
   }
 }
@@ -594,36 +600,17 @@ void configADC(void)
   }
 }
 
-
-void wifiServer(void)
+void iotWebConfSetup(void)
 {
-  server.on("/upload", HTTP_GET, []() {                 // if the client requests the upload page
-    if (!handleFileRead("/upload.html"))                // send it if it exists
-      server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
-  });
+  // -- Initializing the configuration.
+  iotWebConf.setupUpdateServer(&httpUpdater);
+  iotWebConf.init();
 
-  server.on("/upload", HTTP_POST,                       // if the client posts to the upload page
-  []() {
-    server.send(200);
-  },                          // Send status 200 (OK) to tell the client we are ready to receive
-  handleFileUpload                                    // Receive and save the file
-           );
-
-  server.onNotFound([]() {                              // If the client requests any URI
-    if (!handleFileRead(server.uri()))                  // send it if it exists
-      server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
-  });
-
-
+  server.on("/", handleRoot);
   server.on("/stats", handleStats); //Reads ADC function is called from out index.html
   server.on("/json", handleJSON);
   server.on("/set", HTTP_POST, handleSetvals);
-
   server.on("/config", [] { iotWebConf.handleConfig(); });
-
-  server.on("/", handleRoot);
-
-  server.begin();
 }
 
 void setup()
@@ -634,6 +621,9 @@ void setup()
   // Set the Relay to output mode and ensure the relay is off
   pinMode(RelayPin, OUTPUT);
   digitalWrite(RelayPin, LOW);
+
+  // Set the Steam switch pin to input mode and use the internal pullup
+  pinMode(SteamPin, INPUT_PULLUP);
 
   // PID settings
   windowStartTime = now;
@@ -651,7 +641,6 @@ void setup()
   Wire.setClock(400000L); // ESP8266 Only
   Wire.begin(ESP_SDA, ESP_SCL);
 
-
 #if OLED_DISPLAY == 1
   // Setup the OLED display
   display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C);  // initialize with the I2C addr 0x3C (for the 128x32)
@@ -662,32 +651,7 @@ void setup()
 #endif
 
   configADC();
-
-  // -- Initializing the configuration.
-  iotWebConf.init();
-
-  //  WiFiManager wm;
-  //  wm.setConfigPortalTimeout(180);
-  //  wm.autoConnect();
-
-  SPIFFS.begin();
-
-  wifiServer();
-
-  if ( breadboard == true ) {
-    ArduinoOTA.setHostname("Wemos D1 Mini - breadboard");
-    ArduinoOTA.begin();  // For OTA
-    delay(10);
-    MDNS.begin("xespresso");
-  }
-  else if ( breadboard == false ) {
-    ArduinoOTA.setHostname("Wemos D1 Mini - espresso");
-    ArduinoOTA.begin();  // For OTA
-    delay(10);
-    MDNS.begin("espresso");
-  }
-
-
+  iotWebConfSetup();
 } // end of setup()
 
 
@@ -695,6 +659,7 @@ void loop()
 {
   keepTime();
   readTemps();
+  steamSwitch();
   relayControl();
   trackloop();
 #if OLED_DISPLAY == 1
