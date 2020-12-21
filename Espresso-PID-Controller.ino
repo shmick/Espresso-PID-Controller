@@ -19,6 +19,8 @@
 #define CONFIG_VERSION "2020-12-20-r00"
 
 const int ADSGAIN = 2;
+
+// Measured output of the TLVH431 1.25V precision voltage regulator
 const double Vref = 1.2516;
 
 // set to 1 if using the OLED display. Disabled by default.
@@ -82,7 +84,7 @@ double Kd = 0.2;
 const int WindowSize = 5000;
 
 // -- Initial name of the Thing. Used e.g. as SSID of the own Access Point.
-const char thingName[] = "baby";
+const char thingName[] = "espresso";
 // -- Initial password to connect to the Thing, when it creates an own Access Point.
 const char wifiInitialApPassword[] = "espresso";
 
