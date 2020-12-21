@@ -45,6 +45,9 @@ const double Vref = 1.2516;
 // Needed for ADS1115 ADC
 #include "src/ADS1115/ADS1115.h"
 
+// Needed to debounce the steam switch https://github.com/JChristensen/JC_Button
+#include <JC_Button.h>
+
 // *****************************************
 // * Config options that you can customize *
 // *****************************************
@@ -165,9 +168,9 @@ uint32_t previousServerMillis = now;
 // Reset the operation mode to true by toggling the steam switch for less than 3 secconds
 bool steamMode = false;
 bool steamTimer = false;
-int steamVal;
 uint32_t steamTimeStart;
 uint32_t steamTimeMillis;
+Button steamsw(SteamPin, 100); // 100ms debounce for the steam switch
 
 
 // Setup I2C pins
@@ -308,14 +311,17 @@ void relayControl(void)
 
 
 void steamSwitch() {
-  // set the  value of steamMode based on steamVal
-  steamVal = digitalRead(SteamPin);
-  if (steamVal == LOW) {
-    steamMode = true ;
+
+  steamsw.read(); // read the steam switch
+
+  if (steamsw.isPressed() && !steamMode ) // if switch is on, set steamMode to true
+  {
+    steamMode = true;
   }
-  else if (steamVal == HIGH) {
-    steamMode = false ;
+  else if (!steamsw.isPressed() && steamMode ) {
+    steamMode = false;
   }
+
 
   // set the steamTimer value only when the steamMode changes state
   if ( steamMode && !steamTimer ) {
@@ -625,7 +631,8 @@ void setup()
   digitalWrite(RelayPin, LOW);
 
   // Set the Steam switch pin to input mode and use the internal pullup
-  pinMode(SteamPin, INPUT_PULLUP);
+  //  pinMode(SteamPin, INPUT_PULLUP);
+  steamsw.begin();              // initialize the button object
 
   // PID settings
   windowStartTime = now;
