@@ -52,14 +52,14 @@ const double Vref = 1.2516;
 // * Config options that you can customize *
 // *****************************************
 
-#define RelayPin 4 // Ardunio D4 = Wemos D1 Mini Pin D2
-#define SteamPin 2 // Arduino D2 = Wemos D1 Mini Pin D4
+#define RelayPin D2
+#define SteamPin D4
 
 // After powering on, how many minutes until we force the boiler to power down
 // Turning the machine off and on again will reset the timer
 const int maxRunTime = 180;
 
-// Max time the steam switch can be toggled to reset the operMode state to true
+// Max time in seconds that the steam switch can be toggled from on to off to reset the operMode state to true
 const int steamReset = 3;
 
 // Max number of minutes we can remain in steam mode
@@ -91,7 +91,6 @@ const char thingName[] = "espresso";
 // -- Initial password to connect to the Thing, when it creates an own Access Point.
 const char wifiInitialApPassword[] = "espresso";
 
-
 // ***********************************************************
 // ***********************************************************
 // * There should be no need to tweak many things below here *
@@ -103,14 +102,14 @@ const char wifiInitialApPassword[] = "espresso";
 double Input, Output;
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
 double PWMOutput;
-uint32_t windowStartTime;
+unsigned long windowStartTime;
 
 // Define the info needed for the temperature averaging
 const int numReadings = 8;
-int readings[numReadings];      // the readings from the analog input
-int readIndex = 0;              // the index of the current reading
-int total = 0;                  // the running total
-int average = 0;                // the average
+int readings[numReadings]; // the readings from the analog input
+int readIndex = 0;         // the index of the current reading
+int total = 0;             // the running total
+int average = 0;           // the average
 
 // Thermocouple variables
 float Vout; // The voltage coming from the out pin on the TC amp
@@ -141,41 +140,40 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 String header;
 
 // All timers reference the value of now
-uint32_t now = 0; //This variable is used to keep track of time
+unsigned long now = 0; //This variable is used to keep track of time
 
 // OLED display timer
 const int OLEDinterval = 250;           // interval at which to write new data to the OLED
-uint32_t previousOLEDMillis = now;            // will store last time OLED was updated
+unsigned long previousOLEDMillis = now; // will store last time OLED was updated
 
 // Serial output timer
-const int serialPing = 500; //This determines how often we ping our loop
-uint32_t lastMessage = now; //This keeps track of when our loop last spoke to serial
+const int serialPing = 500;      //This determines how often we ping our loop
+unsigned long lastMessage = now; //This keeps track of when our loop last spoke to serial
 
 int runTimeMins;
 long runTimeSecs;
-uint32_t runTimeStart = now;
+unsigned long runTimeStart = now;
 
 // Temp read interval
 const int TempInterval = 5;
-uint32_t currentTempMillis;
-uint32_t previousTempMillis = now;
+unsigned long currentTempMillis;
+unsigned long previousTempMillis = now;
 
 // Server tasks interval
 const int serverInterval = 50;
-uint32_t currentServerMillis;
-uint32_t previousServerMillis = now;
+unsigned long currentServerMillis;
+unsigned long previousServerMillis = now;
 
 // Reset the operation mode to true by toggling the steam switch for less than 3 secconds
 bool steamMode = false;
 bool steamTimer = false;
-uint32_t steamTimeStart;
-uint32_t steamTimeMillis;
+unsigned long steamTimeStart;
+unsigned long steamTimeMillis;
 Button steamsw(SteamPin, 100); // 100ms debounce for the steam switch
 
-
 // Setup I2C pins
-#define ESP_SCL 14 // Arduino 14 = ESP8266 Pin 5
-#define ESP_SDA 12 // Arduino 12 = ESP8266 Pin 6
+#define ESP_SCL D5
+#define ESP_SDA D6
 
 #if OLED_DISPLAY == 1
 // OLED Display setup
@@ -195,10 +193,9 @@ int adcval;
 ADS1115 adc;
 float ADS_PGA;
 
-uint32_t prevLoopMillis;
-uint32_t numLoops = 0;
-uint32_t currLoops = 0;
-
+unsigned long prevLoopMillis;
+int numLoops = 0;
+int currLoops = 0;
 
 void keepTime(void)
 {
@@ -208,15 +205,18 @@ void keepTime(void)
   runTimeMins = (now - runTimeStart) / 60000;
 }
 
-
 int readADC()
 {
   static int read_triggered = 0;
-  if (!read_triggered) {
+  if (!read_triggered)
+  {
     if (adc.trigger_sample() == 0)
       read_triggered = 1;
-  } else {
-    if (!adc.is_sample_in_progress()) {
+  }
+  else
+  {
+    if (!adc.is_sample_in_progress())
+    {
       adcval = adc.read_sample();
       read_triggered = 0;
     }
@@ -224,11 +224,11 @@ int readADC()
   return adcval;
 }
 
-
 void readTemps(void)
 {
   currentTempMillis = now;
-  if (currentTempMillis - previousTempMillis > TempInterval) {
+  if (currentTempMillis - previousTempMillis > TempInterval)
+  {
 
     // subtract the last reading:
     total = total - readings[readIndex];
@@ -257,21 +257,20 @@ void readTemps(void)
 
     // Use the NIST corrected temperature readings for a K-type thermocouple in the 0-500°C range
     // https://srdata.nist.gov/its90/type_k/kcoefficients_inverse.html
-    Input = c0
-            + c1 * Vtc
-            + c2 * pow(Vtc, 2)
-            + c3 * pow(Vtc, 3)
-            + c4 * pow(Vtc, 4)
-            + c5 * pow(Vtc, 5)
-            + c6 * pow(Vtc, 6)
-            + c7 * pow(Vtc, 7)
-            + c8 * pow(Vtc, 8)
-            + c9 * pow(Vtc, 9);
+    Input = c0 +
+            c1 * Vtc +
+            c2 * pow(Vtc, 2) +
+            c3 * pow(Vtc, 3) +
+            c4 * pow(Vtc, 4) +
+            c5 * pow(Vtc, 5) +
+            c6 * pow(Vtc, 6) +
+            c7 * pow(Vtc, 7) +
+            c8 * pow(Vtc, 8) +
+            c9 * pow(Vtc, 9);
 
     previousTempMillis = currentTempMillis;
   }
 }
-
 
 void relayControl(void)
 {
@@ -279,13 +278,15 @@ void relayControl(void)
 
   // If more than maxRunTime minutes has elapsed, turn the boiler off
   // and dont perform any other PID functions
-  if ( (runTimeMins >= maxRunTime) || (operMode == false) )
+  if ((runTimeMins >= maxRunTime) || (!operMode))
   {
     digitalWrite(RelayPin, LOW);
     myPID.SetMode(MANUAL);
     Output = 0;
     operMode = false;
-  } else {
+  }
+  else
+  {
     // Compute the PID values
     myPID.SetMode(AUTOMATIC);
     myPID.Compute();
@@ -303,42 +304,50 @@ void relayControl(void)
   // If that is greater than (or equal to) the Output value, the relay is turned OFF.
   if (PWMOutput > (now - windowStartTime))
   {
-    digitalWrite(RelayPin, HIGH);  // Wemos BUILTIN_LED LOW = ON
-  } else {
+    digitalWrite(RelayPin, HIGH); // Wemos BUILTIN_LED LOW = ON
+  }
+  else
+  {
     digitalWrite(RelayPin, LOW); // Wemos BUILTIN_LED HIGH = OFF
   }
 }
 
-
-void steamSwitch() {
+void steamSwitch()
+{
 
   steamsw.read(); // read the steam switch
 
-  if (steamsw.isPressed() && !steamMode ) // if switch is on, set steamMode to true
+  if (steamsw.isPressed() && !steamMode) // if switch is on, set steamMode to true
   {
     steamMode = true;
   }
-  else if (!steamsw.isPressed() && steamMode ) {
+  else if (!steamsw.isPressed() && steamMode)
+  {
     steamMode = false;
   }
 
-
   // set the steamTimer value only when the steamMode changes state
-  if ( steamMode && !steamTimer ) {
+  if (steamMode && !steamTimer)
+  {
     steamTimer = true;
     steamTimeStart = now;
-  } else if ( !steamMode && steamTimer ) {
+  }
+  else if (!steamMode && steamTimer)
+  {
     steamTimer = false;
   }
 
   // If steamTimer is true, update steamTimeMillis
-  if ( steamTimer ) {
+  if (steamTimer)
+  {
     steamTimeMillis = now - steamTimeStart;
   }
 
   // if steamMode is now false, check to see if we should set operMode to true
-  if ( !steamMode && steamTimeMillis > 0 ) {
-    if ( steamTimeMillis / 1000 <= steamReset ) {
+  if (!steamMode && steamTimeMillis > 0)
+  {
+    if (steamTimeMillis / 1000 <= steamReset)
+    {
       operMode = true;
       runTimeStart = now;
       steamTimeMillis = 0;
@@ -347,21 +356,25 @@ void steamSwitch() {
 
   // This must be the last if statement. It's a safety check to ensure
   // that we set operMode to false if the steam switch has been on too long
-  if ( steamTimeMillis / 1000 / 60 >= steamMaxMins ) {
+  if (steamTimeMillis / 1000 / 60 >= steamMaxMins)
+  {
     operMode = false;
   }
-  else if ( steamMode && operMode && Setpoint != SteamSetpoint) {
+  else if (steamMode && operMode && Setpoint != SteamSetpoint)
+  {
     Setpoint = SteamSetpoint;
   }
-  else if ( !steamMode && operMode && Setpoint != CoffeeSetpoint) {
+  else if (!steamMode && operMode && Setpoint != CoffeeSetpoint)
+  {
     Setpoint = CoffeeSetpoint;
   }
 }
 
-
 // Track how many loops per second are executed.
-void trackloop() {
-  if ( now - prevLoopMillis >= 1000) {
+void trackloop()
+{
+  if (now - prevLoopMillis >= 1000)
+  {
     currLoops = numLoops;
     numLoops = 0;
     prevLoopMillis = now;
@@ -369,20 +382,20 @@ void trackloop() {
   numLoops++;
 }
 
-
 #if OLED_DISPLAY == 1
 void displayOLED(void)
 {
-  uint32_t currentOLEDMillis = now;
+  unsigned long currentOLEDMillis = now;
 
-  if (currentOLEDMillis - previousOLEDMillis > OLEDinterval) {
+  if (currentOLEDMillis - previousOLEDMillis > OLEDinterval)
+  {
     // save the last time you wrote to the OLED display
     previousOLEDMillis = currentOLEDMillis;
 
     // have to wipe the buffer before writing anything new
     display.clearDisplay();
 
-    if ( operMode == true )
+    if (operMode)
     {
       // TOP HALF = Temp + Input Temp
       display.setFont(&FreeSans9pt7b);
@@ -391,7 +404,7 @@ void displayOLED(void)
 
       display.setFont(&FreeSerifBold18pt7b);
       display.setCursor(48, 26);
-      if ( Input >= 100 )
+      if (Input >= 100)
         display.print(Input, 1);
       else
         display.print(Input);
@@ -404,11 +417,11 @@ void displayOLED(void)
       display.setFont(&FreeSerifBold18pt7b);
       display.setCursor(60, 60);
       // Dont add a decimal place for 100 or 0
-      if ( (Output >= 100.0) || (Output == 0.0) )
+      if ((Output >= 100.0) || (Output == 0.0))
       {
         display.print(Output, 0);
       }
-      else if ( Output < 10 )
+      else if (Output < 10)
       {
         display.print(Output, 2);
       }
@@ -417,10 +430,10 @@ void displayOLED(void)
         display.print(Output, 1);
       }
     }
-    else if ( operMode == false )
+    else if (!operMode)
     {
       // After maxDisplayMins minutes turn off the display
-      if ( runTimeMins >= maxDisplayMins )
+      if (runTimeMins >= maxDisplayMins)
       {
         display.clearDisplay();
       }
@@ -437,17 +450,18 @@ void displayOLED(void)
 }
 #endif
 
-
 void displaySerial(void)
 {
   // Output some data to serial to see what's happening
   if (now - lastMessage > serialPing)
   {
-    if ( operMode == true )
+    if (operMode)
     {
       Serial.print("Time: ");
       Serial.println(runTimeSecs);
-    } else {
+    }
+    else
+    {
       Serial.print("Input: ");
       Serial.print(Input, 1);
       Serial.print(", ");
@@ -457,7 +471,6 @@ void displaySerial(void)
     lastMessage = now; //update the time stamp.
   }
 }
-
 
 // ESP8266WebServer handler
 void handleRoot()
@@ -469,18 +482,18 @@ void handleRoot()
     return;
   }
   String s = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/>";
-  s += "<title>IotWebConf 02 Status and Reset</title></head><body>Hello world!";
+  s += "<title>Espresso PID Controller</title></head><body>Espresso PID Controller";
   s += "Go to <a href='config'>configure page</a> to change settings.";
   s += "</body></html>\n";
 
   server.send(200, "text/html", s);
 }
 
-
 // ESP8266WebServer handler
-void handleStats() {
+void handleStats()
+{
   String message = "<head> <meta http-equiv=\"refresh\" content=\"2\"> </head>\n";
-  message +=  "<h1>\n";
+  message += "<h1>\n";
   message += "Time: " + String(runTimeSecs) + "<br>\n";
   message += "Setpoint: " + String(Setpoint) + "<br>\n";
   message += "PID Input:  " + String(Input) + "<br>\n";
@@ -493,52 +506,59 @@ void handleStats() {
   server.send(200, "text/html", message);
 }
 
-
 // ESP8266WebServer handler
-void handleJSON() {
+void handleJSON()
+{
   // Quick and dirty JSON output without the use of ArduinoJson
   String comma = ", ";
   String message = "{ ";
-  message +=  "\"Uptime\":" + String(now / 1000) + comma;
-  message +=  "\"Runtime\":" + String(runTimeSecs) + comma;
+  message += "\"Uptime\":" + String(now / 1000) + comma;
+  message += "\"Runtime\":" + String(runTimeSecs) + comma;
   message += "\"Setpoint\":" + String(Setpoint) + comma;
-  message +=  "\"Input\":" + String(Input) + comma;
-  message +=  "\"Output\":" + String(Output) + comma;
-  message +=  "\"ADC\":" + String(average) + comma;
-  message +=  "\"Vout\":" + String(Vout) + comma;
-  message +=  "\"Mode\":" + String(operMode) + comma;
-  message +=  "\"Loops\":" + String(currLoops) + comma;
+  message += "\"Input\":" + String(Input) + comma;
+  message += "\"Output\":" + String(Output) + comma;
+  message += "\"ADC\":" + String(average) + comma;
+  message += "\"Vout\":" + String(Vout) + comma;
+  message += "\"Mode\":" + String(operMode) + comma;
+  message += "\"Loops\":" + String(currLoops) + comma;
   message += "\"steamMode\":" + String(steamMode);
   message += " }";
   server.send(200, "application/json", message);
 }
 
-
 // ESP8266WebServer handler
-void handleSetvals() {
+void handleSetvals()
+{
   String message;
 
   String opmode_val = server.arg("opmode");
   String sp_val = server.arg("sp");
 
-  if ( opmode_val == "off" ) {
+  if (opmode_val == "off")
+  {
     operMode = false;
     message += "opermode: " + opmode_val;
     message += "\n";
-  } else if ( opmode_val == "on" ) {
+  }
+  else if (opmode_val == "on")
+  {
     operMode = true;
     runTimeStart = now;
     message += "opermode: " + opmode_val;
     message += "\n";
   }
 
-  if ( sp_val != NULL ) {
+  if (sp_val != NULL)
+  {
     double sp_int = sp_val.toFloat();
-    if ( sp_int <= 105.11 || sp_int > 0.1 ) {
+    if (sp_int <= 105.11 || sp_int > 0.1)
+    {
       Setpoint = sp_int;
       message += "Setpoint: " + sp_val;
       message += "\n";
-    } else {
+    }
+    else
+    {
       message += "sp: " + String(sp_val) + " is invalid\n";
     }
   }
@@ -546,26 +566,15 @@ void handleSetvals() {
   server.send(200, "text/plain", message);
 }
 
-
-// ESP8266WebServer handler
-String getContentType(String filename) { // convert the file extension to the MIME type
-  if (filename.endsWith(".html")) return "text/html";
-  else if (filename.endsWith(".css")) return "text/css";
-  else if (filename.endsWith(".js")) return "application/javascript";
-  else if (filename.endsWith(".ico")) return "image/x-icon";
-  else if (filename.endsWith(".json")) return "application/json";
-  return "text/plain";
-}
-
-
-void esp8266Tasks() {
+void esp8266Tasks()
+{
   currentServerMillis = now;
-  if (currentServerMillis - previousServerMillis > serverInterval) {
+  if (currentServerMillis - previousServerMillis > serverInterval)
+  {
     iotWebConf.doLoop();
     previousServerMillis = currentServerMillis;
   }
 }
-
 
 void configADC(void)
 {
@@ -582,27 +591,33 @@ void configADC(void)
   //  EIGHT      // 8x gain   +/- 0.512V  1 bit = 0.015625mV
   //  SIXTEEN    // 16x gain  +/- 0.256V  1 bit = 0.0078125mV
 
-  if ( ADSGAIN == 23 ) {
+  if (ADSGAIN == 23)
+  {
     adc.set_pga(ADS1115_PGA_TWO_THIRDS);
     ADS_PGA = 0.1875;
   }
-  else if ( ADSGAIN == 1 ) {
+  else if (ADSGAIN == 1)
+  {
     adc.set_pga(ADS1115_PGA_ONE);
     ADS_PGA = 0.125;
   }
-  else if ( ADSGAIN == 2 ) {
+  else if (ADSGAIN == 2)
+  {
     adc.set_pga(ADS1115_PGA_TWO);
     ADS_PGA = 0.0625;
   }
-  else if ( ADSGAIN == 4 ) {
+  else if (ADSGAIN == 4)
+  {
     adc.set_pga(ADS1115_PGA_FOUR);
     ADS_PGA = 0.03125;
   }
-  else if ( ADSGAIN == 8 ) {
+  else if (ADSGAIN == 8)
+  {
     adc.set_pga(ADS1115_PGA_EIGHT);
     ADS_PGA = 0.015625;
   }
-  else if ( ADSGAIN == 16 ) {
+  else if (ADSGAIN == 16)
+  {
     adc.set_pga(ADS1115_PGA_SIXTEEN);
     ADS_PGA = 0.0078125;
   }
@@ -624,15 +639,13 @@ void iotWebConfSetup(void)
 void setup()
 {
   Serial.begin(115200); //Start a serial session
-  lastMessage = now; // timestamp
+  lastMessage = now;    // timestamp
 
   // Set the Relay to output mode and ensure the relay is off
   pinMode(RelayPin, OUTPUT);
   digitalWrite(RelayPin, LOW);
 
-  // Set the Steam switch pin to input mode and use the internal pullup
-  //  pinMode(SteamPin, INPUT_PULLUP);
-  steamsw.begin();              // initialize the button object
+  steamsw.begin(); // initialize the button object
 
   // PID settings
   windowStartTime = now;
@@ -652,7 +665,7 @@ void setup()
 
 #if OLED_DISPLAY == 1
   // Setup the OLED display
-  display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C);  // initialize with the I2C addr 0x3C (for the 128x32)
+  display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C); // initialize with the I2C addr 0x3C (for the 128x32)
   display.clearDisplay();
   display.setTextColor(WHITE);
   display.setTextSize(1);
@@ -662,7 +675,6 @@ void setup()
   configADC();
   iotWebConfSetup();
 } // end of setup()
-
 
 void loop()
 {
