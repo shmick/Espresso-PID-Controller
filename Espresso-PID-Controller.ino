@@ -304,11 +304,11 @@ void relayControl(void)
   // If that is greater than (or equal to) the Output value, the relay is turned OFF.
   if (PWMOutput > (now - windowStartTime))
   {
-    digitalWrite(RelayPin, HIGH); // Wemos BUILTIN_LED LOW = ON
+    digitalWrite(RelayPin, HIGH);
   }
   else
   {
-    digitalWrite(RelayPin, LOW); // Wemos BUILTIN_LED HIGH = OFF
+    digitalWrite(RelayPin, LOW);
   }
 }
 
