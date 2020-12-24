@@ -52,7 +52,7 @@ const char wifiInitialApPassword[] = "espresso";
 #define SteamPin D4
 
 // Default to being ON
-bool operMode = false; // keep things off by default while we're testing
+bool operMode = true;
 
 // After powering on, how many minutes until we force the boiler to power down
 const int maxRunTime = 180;
