@@ -54,7 +54,7 @@ const char wifiInitialApPassword[] = "espresso"; // IotWebConf Initial password 
 #define RelayPin D2 // This drives the Solid State Relay
 #define SteamPin D4 // The steam switch connects to this + GND
 
-bool operMode = true; // keep things off by default while we're testing
+bool operMode = true; // Start heating the boiler when powered on
 
 const int maxRunTime = 180;             // Don't keep the boiler hot after this many minutes
 const int steamReset = 3;               // Flip steam on/off to reset opermode in less than 3 seconds
