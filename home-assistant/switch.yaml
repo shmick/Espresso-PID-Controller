@@ -1,8 +1,20 @@
+# MQTT Example
+- platform: mqtt
+  name: "espresso control"
+  state_topic: "espresso/<thingName>/stat"
+  command_topic: "espresso/<thingName>/cmnd"
+  value_template: "{{ value_json.operMode }}"
+  payload_on: '{"operMode":true}'
+  payload_off: '{"operMode":false}'
+  state_on: true
+  state_off: false
+
+# REST Example
 - platform: command_line
   scan_interval: 120
   switches:
     espresso_control:
       friendly_name: Espresso Operation Mode
-      command_on: 'curl -m 3 -s -d "opmode=on" "http://192.168.1.240/set"'
-      command_off: 'curl -m 3 -s -d "opmode=off" "http://192.168.1.240/set"'
+      command_on: 'curl -m 3 -s -d "opmode=on" "http://<ip address of wemos>/set"'
+      command_off: 'curl -m 3 -s -d "opmode=off" "http://<ip address of wemos>/set"'
       command_state: 'curl -m 3 -s 192.168.1.240/stats | grep -oP "OperMode: 1"'

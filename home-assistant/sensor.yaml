@@ -1,9 +1,20 @@
+# MQTT Example
+- platform: mqtt
+  name: espresso runtime
+  state_topic: "espresso/<thingName>/stat"
+  value_template: "{{ ( value_json.Runtime / 60 )| round(0)  }}"
+- platform: mqtt
+  name: espresso input
+  state_topic: "espresso/<thingName>/stat"
+  value_template: "{{ value_json.Input }}"
+
+# REST Example
 - platform: rest
   name: espresso stats
   json_attributes:
     - Runtime
     - Input
-  resource: http://192.168.1.240/json
+  resource: http://<ip address of wemos>/json
   value_template: "{{ value_json.Mode }}"
 - platform: template
   sensors:
