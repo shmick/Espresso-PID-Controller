@@ -5,6 +5,12 @@ The slow responding and somewhat innacturate bimetal coffee thermostat is replac
 connected to an Arduino controller that controls a Solid State Relay (SSR) to control power to the small boiler inside
 the espresso machine.
 
+### 2020-12-28 Update
+* Update to IotWebConf 3.0
+* Add MQTT config parameters to web portal
+* Use ArduinoJson for reading and generating JSON
+* Lots of code cleanup and comments added
+
 ### 2020-12-20 Update
 * Code cleanup, leaving only the IotWebConf bits in place
 * Enable IotWebConf httpUpdater for OTA updates
@@ -21,3 +27,20 @@ the espresso machine.
 #### ADS1115 15bit ADC to provide better temperature resolution
 #### Crydom Solid State Relay 
 #### I2C 128x64 OLED display from eBay/Amazon ( not using the OLED for daily use )
+
+
+***
+## Documentation
+
+## IotWebConf Info
+* AP password = espresso
+
+## MQTT
+MQTT stat topic = `espresso/<thingName>/stat`
+
+Example stat payload `{"Name":"thingName","Uptime":60,"Runtime":60,"Setpoint":105,"Input":105.0,"Output":5.08,"ADC":28457,"Vout":1.78,"operMode":true,"Loops":27734,"steamMode":false}`
+
+MQTT command topic = `espresso/<thingName>/cmnd`
+
+Right now the only command payload is `{"operMode":true|false}`
+
