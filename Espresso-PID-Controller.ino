@@ -63,6 +63,7 @@ const int maxDisplayMins = 200;         // Turn the display off after 200 minute
 double Setpoint = 105;                  // This will be the default coffee setpoint
 const double CoffeeSetpoint = Setpoint; // This will be the default coffee setpoint
 const double SteamSetpoint = 125;       // This will be the default steam  setpoint
+const int maxBoilerTemp = 140;          // Forcibly keep the relay off if this temp is reached
 const int WindowSize = 5000;            // PID PWM Window in milliseconds
 
 // Define the PID tuning Parameters
@@ -185,7 +186,7 @@ bool steamMode = false;
 bool steamTimer = false;
 unsigned long steamTimeStart;
 unsigned long steamTimeMillis;
-Button steamsw(SteamPin, 100); // 100ms debounce for the steam switch
+Button steamsw(SteamPin, 750); // debounce the steam switch
 
 // Setup I2C pins
 #define ESP_SCL D5
@@ -343,13 +344,15 @@ void relayControl(void)
 {
   Input = readTemps(); // Providde the PID loop with the current temperature
 
+  if (Input >= maxBoilerTemp) // Forcibly turn off the boiler if maxBoilerTemp is reached
+    digitalWrite(RelayPin, LOW);
+
   if (runTimeMins >= maxRunTime && operMode) // If we've reached maxRunTime, disable the PID control
     enablePID(false);
-
   else if (!myPID.GetMode() && operMode) // Set the PID back to Automatic mode if operMode is true
     enablePID(true);
 
-  if (operMode)
+  if (operMode && Input < maxBoilerTemp)
   {
     myPID.Compute();
 
@@ -394,8 +397,8 @@ void steamSwitch()
   if (steamTimer)
     steamTimeMillis = now - steamTimeStart;
 
-  // if steamMode is now false, check to see if we should set operMode to true
-  if (!steamMode && steamTimeMillis > 0)
+  // if operMode and steamMode are false, check to see if we should set operMode to true
+  if (!operMode && !steamMode && steamTimeMillis > 100)
   {
     if (steamTimeMillis / 1000 <= steamReset)
     {
