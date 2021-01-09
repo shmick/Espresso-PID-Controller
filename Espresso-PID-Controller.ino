@@ -49,7 +49,7 @@
 const char thingName[] = "espresso";             // IotWebConf thingName
 const char wifiInitialApPassword[] = "espresso"; // IotWebConf Initial password to connect to the Thing
 #define STRING_LEN 128                           // IotWebConf Parameters
-#define CONFIG_VERSION "mqtt01"                  // IotWebConf config version for EEPROM
+#define CONFIG_VERSION "v001"                    // IotWebConf config version for EEPROM
 
 #define RelayPin D2 // This drives the Solid State Relay
 #define SteamPin D4 // The steam switch connects to this + GND
@@ -100,17 +100,6 @@ int readIndex = 0;         // the index of the current reading
 int total = 0;             // the running total
 int average = 0;           // the average
 
-// -- Method declarations.
-// void handleRoot();
-// void mqttMessageReceived(String &topic, String &payload);
-// bool connectMqtt();
-// bool connectMqttOptions();
-
-// -- Callback methods.
-// void wifiConnected();
-// void configSaved();
-// bool formValidator();
-
 // IotWebConf Begin
 DNSServer dnsServer;
 WebServer server(80);
@@ -139,6 +128,7 @@ IotWebConfTextParameter mqttHostParam = IotWebConfTextParameter("MQTT Host", "mq
 IotWebConfCheckboxParameter mqttEnabledParam = IotWebConfCheckboxParameter("MQTT Enabled", "mqttEnabledParam", mqttEnabledValue, STRING_LEN, false);
 // IotWebConf End
 
+bool mqttEnabled;
 bool needMqttConnect = false;
 bool needReset = false;
 unsigned long lastMqttConnectionAttempt = 0;
@@ -336,7 +326,7 @@ bool enablePID(bool enable = false)
     operMode = true;
   }
 
-  if (mqttEnabledValue)
+  if (mqttEnabled)
     publishMqttStats(now);
 }
 
@@ -431,7 +421,7 @@ void trackloop()
 
 bool connectMqtt()
 {
-  if (1000 > now - lastMqttConnectionAttempt)
+  if (2000 > now - lastMqttConnectionAttempt)
   {
     // Do not repeat within 1 sec.
     return false;
@@ -617,7 +607,7 @@ void esp8266Tasks()
 
     iotWebConf.doLoop();
 
-    if (mqttEnabledValue)
+    if (mqttEnabled)
     {
       mqttTasks();
       publishMqttStats();
@@ -699,11 +689,13 @@ void iotWebConfSetup(void)
   iotWebConf.addParameterGroup(&mqttGroup);
 
   iotWebConf.setConfigSavedCallback(&configSaved);
-  iotWebConf.setFormValidator(&formValidator);
   iotWebConf.setWifiConnectionCallback(&wifiConnected);
+
+  // iotWebConf.setApTimeoutMs(30 * 1000);
 
   // -- Initializing the configuration.
   bool validConfig = iotWebConf.init();
+
   if (!validConfig)
   {
     mqttUserValue[0] = '\0';
@@ -719,7 +711,15 @@ void iotWebConfSetup(void)
   server.on("/config", [] { iotWebConf.handleConfig(); });
   server.onNotFound([]() { iotWebConf.handleNotFound(); });
 
-  if (mqttEnabledValue)
+  mqttEnabled = mqttEnabledParam.isChecked();
+
+  // if mqtt checkbox has been selected but no mqtt host has been set, disable mqtt
+  if (mqttEnabled && mqttHostValue[0] == '\0')
+  {
+    mqttEnabled = false;
+  }
+
+  if (mqttEnabled)
   {
     mqttStatTopic = "espresso/" + String(iotWebConf.getThingName()) + "/stat";
     mqttCmndTopic = "espresso/" + String(iotWebConf.getThingName()) + "/cmnd";
@@ -757,20 +757,6 @@ void configSaved()
 {
   Serial.println("Configuration was updated.");
   needReset = true;
-}
-
-bool formValidator()
-{
-  Serial.println("Validating form.");
-  bool valid = true;
-
-  int l = server.arg(mqttHostParam.getId()).length();
-  if (l < 3)
-  {
-    mqttHostParam.errorMessage = "Please provide at least 3 characters!";
-    valid = false;
-  }
-  return valid;
 }
 
 #if OLED_DISPLAY == 1
