@@ -5,6 +5,10 @@ The slow responding and somewhat innacturate bimetal coffee thermostat is replac
 connected to an Arduino controller that controls a Solid State Relay (SSR) to control power to the small boiler inside
 the espresso machine.
 
+### 2021-01-09 Update
+* Properly detect mqttEnabled value and ensure an MQTT host is set in order to be set to true
+* Update `CONFIG_VERSION` from `mqtt01` to `v001` to deal with possible corrupt EEPROM data during testing
+
 ### 2021-01-06 Update
 * Force the SSR off if maxBoilerTemp is reached ( 140C )
 * Using the steam switch to reset operMode now requires operMode to be false
