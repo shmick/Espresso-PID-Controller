@@ -1,6 +1,7 @@
 # MQTT Example
 - platform: mqtt
-  name: "espresso control"
+  name: "espresso controller"
+  availability_topic: "espresso/<thingName>/avail"
   state_topic: "espresso/<thingName>/stat"
   command_topic: "espresso/<thingName>/cmnd"
   value_template: "{{ value_json.operMode }}"
