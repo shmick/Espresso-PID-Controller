@@ -1,12 +1,17 @@
 # MQTT Example
 - platform: mqtt
   name: espresso runtime
+  availability_topic: "espresso/<thingName>/avail"
   state_topic: "espresso/<thingName>/stat"
   value_template: "{{ ( value_json.Runtime / 60 )| round(0)  }}"
+  unit_of_measurement: minutes
+  icon: hass:clock
 - platform: mqtt
   name: espresso input
+  availability_topic: "espresso/<thingName>/avail"
   state_topic: "espresso/<thingName>/stat"
   value_template: "{{ value_json.Input }}"
+  unit_of_measurement: °C
 
 # REST Example
 - platform: rest
@@ -20,7 +25,9 @@
   sensors:
     espresso_runtime:
       friendly_name: "runtime"
+      unit_of_measurement: minutes
       value_template: '{{ ( states.sensor.espresso_stats.attributes["Runtime"] / 60 ) | round(0) }}'
     espresso_input:
       friendly_name: "input"
+      unit_of_measurement: °C
       value_template: '{{ states.sensor.espresso_stats.attributes["Input"] }}'

@@ -105,6 +105,7 @@ DNSServer dnsServer;
 WebServer server(80);
 WiFiClient net;
 MQTTClient mqttClient(256);
+String myThingName;
 
 char mqttUserValue[STRING_LEN];
 char mqttPassValue[STRING_LEN];
@@ -113,6 +114,7 @@ char mqttEnabledValue[STRING_LEN];
 
 String mqttStatTopic;
 String mqttCmndTopic;
+String mqttWillTopic;
 
 #ifdef ESP8266
 ESP8266HTTPUpdateServer httpUpdater;
@@ -202,27 +204,36 @@ void keepTime(void)
   runTimeMins = (now - runTimeStart) / 60000;
 }
 
-void publishMqttStats(unsigned long delaytime = 0)
+void publishMqttStats() // Publishes the mqtt stats
+{
+  previousMqttStatsMillis = now;
+  mqttClient.publish(mqttStatTopic, genJSON());
+}
+
+void publishMqttStatsCheck() // Determines when to publish mqtt stats
 {
   static int mqttStatsInterval;
+  static bool publishMqttStatsFlag = false;
 
   if (operMode && mqttStatsInterval != mqttStatsOperInterval)
-    mqttStatsInterval = mqttStatsOperInterval;
-  else if (!operMode && mqttStatsInterval != mqttStatsIdleInterval)
-    mqttStatsInterval = mqttStatsIdleInterval;
-
-  // if called by enablePID, reset the previousMqttStatsMillis counter
-  // to avoid a double publish within the mqttStatsInterval time
-  if (delaytime > 0)
   {
-    mqttClient.publish(mqttStatTopic, genJSON());
-    previousMqttStatsMillis = delaytime;
+    mqttStatsInterval = mqttStatsOperInterval;
+    publishMqttStatsFlag = true;
   }
 
-  if (mqttStatsInterval < now - previousMqttStatsMillis)
+  if (!operMode && mqttStatsInterval != mqttStatsIdleInterval)
   {
-    mqttClient.publish(mqttStatTopic, genJSON());
-    previousMqttStatsMillis = now;
+    mqttStatsInterval = mqttStatsIdleInterval;
+    publishMqttStatsFlag = true;
+  }
+
+  if (mqttStatsInterval < (now - previousMqttStatsMillis))
+    publishMqttStatsFlag = true;
+
+  if (publishMqttStatsFlag)
+  {
+    publishMqttStatsFlag = false;
+    publishMqttStats();
   }
 }
 
@@ -325,9 +336,6 @@ bool enablePID(bool enable = false)
     runTimeStart = now;
     operMode = true;
   }
-
-  if (mqttEnabled)
-    publishMqttStats(now);
 }
 
 void relayControl(void)
@@ -339,8 +347,6 @@ void relayControl(void)
 
   if (runTimeMins >= maxRunTime && operMode) // If we've reached maxRunTime, disable the PID control
     enablePID(false);
-  else if (!myPID.GetMode() && operMode) // Set the PID back to Automatic mode if operMode is true
-    enablePID(true);
 
   if (operMode && Input < maxBoilerTemp)
   {
@@ -381,13 +387,17 @@ void steamSwitch()
   else if (!steamMode && steamTimer)
   {
     steamTimer = false;
+    if (operMode)
+      // reset to 0 in operMode otherwise steamReset below could turn the PID on again in certain cases
+      steamTimeMillis = 0;
   }
 
   // If steamTimer is true, update steamTimeMillis
   if (steamTimer)
     steamTimeMillis = now - steamTimeStart;
 
-  // if operMode and steamMode are false, check to see if we should set operMode to true
+  // This is a little easter egg to turn the PID controller on by flipping the steam
+  // switch on for less than 3 seconds while operMode is false
   if (!operMode && !steamMode && steamTimeMillis > 100)
   {
     if (steamTimeMillis / 1000 <= steamReset)
@@ -421,11 +431,9 @@ void trackloop()
 
 bool connectMqtt()
 {
-  if (2000 > now - lastMqttConnectionAttempt)
-  {
-    // Do not repeat within 1 sec.
+  if (2000 > now - lastMqttConnectionAttempt) // Do not repeat within 2 seconds.
     return false;
-  }
+
   Serial.println("Connecting to MQTT server...");
   if (!connectMqttOptions())
   {
@@ -434,9 +442,9 @@ bool connectMqtt()
   }
   Serial.println("Connected!");
 
+  mqttClient.publish(mqttWillTopic, "online", true, 1);
   mqttClient.subscribe(mqttCmndTopic);
-  publishMqttStats(now);
-
+  publishMqttStats();
   return true;
 }
 
@@ -445,11 +453,11 @@ bool connectMqttOptions()
   bool result;
 
   if (mqttUserValue[0] != '\0' && mqttPassValue[0] != '\0')
-    result = mqttClient.connect(iotWebConf.getThingName(), mqttUserValue, mqttPassValue);
+    result = mqttClient.connect(myThingName.c_str(), mqttUserValue, mqttPassValue);
   else if (mqttUserValue[0] != '\0')
-    result = mqttClient.connect(iotWebConf.getThingName(), mqttUserValue);
+    result = mqttClient.connect(myThingName.c_str(), mqttUserValue);
   else
-    result = mqttClient.connect(iotWebConf.getThingName());
+    result = mqttClient.connect(myThingName.c_str());
 
   return result;
 }
@@ -540,7 +548,7 @@ double round2(double value) // Round down a float to 2 decimal places
 char *genJSON()
 {
   DynamicJsonDocument doc(256);
-  doc["Name"] = iotWebConf.getThingName();
+  doc["Name"] = myThingName;
   doc["Uptime"] = now / 1000;
   doc["Runtime"] = runTimeSecs;
   doc["Setpoint"] = Setpoint;
@@ -608,10 +616,7 @@ void esp8266Tasks()
     iotWebConf.doLoop();
 
     if (mqttEnabled)
-    {
       mqttTasks();
-      publishMqttStats();
-    }
 
     if (needReset)
     {
@@ -636,6 +641,8 @@ void mqttTasks()
     Serial.println("MQTT reconnect");
     connectMqtt();
   }
+  else if ((iotWebConf.getState() == IOTWEBCONF_STATE_ONLINE) && (mqttClient.connected()))
+    publishMqttStatsCheck();
 }
 
 void configADC(void)
@@ -691,9 +698,6 @@ void iotWebConfSetup(void)
   iotWebConf.setConfigSavedCallback(&configSaved);
   iotWebConf.setWifiConnectionCallback(&wifiConnected);
 
-  // iotWebConf.setApTimeoutMs(30 * 1000);
-
-  // -- Initializing the configuration.
   bool validConfig = iotWebConf.init();
 
   if (!validConfig)
@@ -712,17 +716,20 @@ void iotWebConfSetup(void)
   server.onNotFound([]() { iotWebConf.handleNotFound(); });
 
   mqttEnabled = mqttEnabledParam.isChecked();
+  myThingName = iotWebConf.getThingName();
 
   // if mqtt checkbox has been selected but no mqtt host has been set, disable mqtt
   if (mqttEnabled && mqttHostValue[0] == '\0')
-  {
     mqttEnabled = false;
-  }
 
   if (mqttEnabled)
   {
-    mqttStatTopic = "espresso/" + String(iotWebConf.getThingName()) + "/stat";
-    mqttCmndTopic = "espresso/" + String(iotWebConf.getThingName()) + "/cmnd";
+    mqttWillTopic = "espresso/" + myThingName + "/avail";
+    const char *mqttWillPayload = "offline";
+    mqttClient.setWill(mqttWillTopic.c_str(), mqttWillPayload, true, 1); // retain the LWT topic
+
+    mqttStatTopic = "espresso/" + myThingName + "/stat";
+    mqttCmndTopic = "espresso/" + myThingName + "/cmnd";
 
     mqttClient.begin(mqttHostValue, net);
     mqttClient.onMessage(mqttMessageReceived);
