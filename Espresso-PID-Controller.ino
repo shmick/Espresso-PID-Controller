@@ -847,6 +847,8 @@ void setup()
   windowStartTime = now;         // PID Window
   myPID.SetOutputLimits(0, 100); // PID output 0 - 100
   myPID.SetSampleTime(50);       // PID Samples every 50ms
+  if (operMode)                  // Enable the PID on startup if operMode default value is true
+    myPID.SetMode(AUTOMATIC);
 
   // initialize all the readings to 0 for the temperature averaging
   for (int thisReading = 0; thisReading < numReadings; thisReading++)
