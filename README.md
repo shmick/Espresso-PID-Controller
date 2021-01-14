@@ -5,6 +5,9 @@ The slow responding and somewhat innacturate bimetal coffee thermostat is replac
 connected to an Arduino controller that controls a Solid State Relay (SSR) to control power to the small boiler inside
 the espresso machine.
 
+### 2021-01-14 Update
+* Fix: Enable PID on startup if operMode = true 
+
 ### 2021-01-13 Update
 * Add MQTT Last Will and Testament. Topic = `espresso/<thingname>/avail` 
 * Update Home Assistant [switch](home-assistant/switch.yaml) and [sensor](home-assistant/sensor.yaml) examples to use MQTT availability topic
