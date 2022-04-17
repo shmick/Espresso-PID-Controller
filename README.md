@@ -45,5 +45,7 @@ Example stat payload `{"Name":"thingName","Uptime":60,"Runtime":60,"Setpoint":10
 
 MQTT command topic = `espresso/<thingName>/cmnd`
 
-Right now the only command payload is `{"operMode":true|false}`
+* `{"operMode":true|false}`
+* `{"steamMode":true|false}`
+* `{"Setpoint":<number between 1 and 110>}`
 
