@@ -9,12 +9,12 @@
   Hardware:
   Wemos D1 Mini ( https://www.wemos.cc/en/latest/d1/d1_mini.html )
   AD8495 Thermocouple Amplifier ( https://www.adafruit.com/product/1778 )
-  ADS1115 16-Bit ADC 
+  ADS1115 16-Bit ADC
   Solid State Relay ( Crydom TD1225 )
   128 x 64 OLED (optional) Display using Adafruit_SSD1306 library
 */
 
-#include <PID_v1.h>          // PID Library
+#include <PID_v1.h>          // PID Library https://github.com/br3ttb/Arduino-PID-Library
 #include <Wire.h>            // I2C Library
 #include <MQTT.h>            // https://github.com/256dpi/arduino-mqtt
 #include <ArduinoJson.h>     // https://arduinojson.org/
@@ -123,11 +123,11 @@ HTTPUpdateServer httpUpdater;
 #endif
 IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword, CONFIG_VERSION);
 
-IotWebConfParameterGroup mqttGroup = IotWebConfParameterGroup("mqtt_conf", "MQTT Configuration");
-IotWebConfTextParameter mqttUserParam = IotWebConfTextParameter("MQTT User", "mqttUser", mqttUserValue, STRING_LEN);
-IotWebConfPasswordParameter mqttPassParam = IotWebConfPasswordParameter("MQTT Pass", "mqttPass", mqttPassValue, STRING_LEN);
-IotWebConfTextParameter mqttHostParam = IotWebConfTextParameter("MQTT Host", "mqttHost", mqttHostValue, STRING_LEN);
-IotWebConfCheckboxParameter mqttEnabledParam = IotWebConfCheckboxParameter("MQTT Enabled", "mqttEnabledParam", mqttEnabledValue, STRING_LEN, false);
+iotwebconf::ParameterGroup mqttGroup = iotwebconf::ParameterGroup("mqtt_conf", "MQTT Configuration");
+iotwebconf::TextParameter mqttUserParam = iotwebconf::TextParameter("MQTT User", "mqttUser", mqttUserValue, STRING_LEN);
+iotwebconf::PasswordParameter mqttPassParam = iotwebconf::PasswordParameter("MQTT Pass", "mqttPass", mqttPassValue, STRING_LEN);
+iotwebconf::TextParameter mqttHostParam = iotwebconf::TextParameter("MQTT Host", "mqttHost", mqttHostValue, STRING_LEN);
+iotwebconf::CheckboxParameter mqttEnabledParam = iotwebconf::CheckboxParameter("MQTT Enabled", "mqttEnabledParam", mqttEnabledValue, STRING_LEN, false);
 // IotWebConf End
 
 bool mqttEnabled;
@@ -336,6 +336,8 @@ bool enablePID(bool enable = false)
     runTimeStart = now;
     operMode = true;
   }
+
+  return operMode;
 }
 
 void relayControl(void)
@@ -636,12 +638,12 @@ void mqttTasks()
     if (connectMqtt())
       needMqttConnect = false;
   }
-  else if ((iotWebConf.getState() == IOTWEBCONF_STATE_ONLINE) && (!mqttClient.connected()))
+  else if ((iotWebConf.getState() == iotwebconf::OnLine) && (!mqttClient.connected()))
   {
     Serial.println("MQTT reconnect");
     connectMqtt();
   }
-  else if ((iotWebConf.getState() == IOTWEBCONF_STATE_ONLINE) && (mqttClient.connected()))
+  else if ((iotWebConf.getState() == iotwebconf::OnLine) && (mqttClient.connected()))
     publishMqttStatsCheck();
 }
 
@@ -655,30 +657,30 @@ void configADC(void)
 
   switch (ADSGAIN)
   {
-  case 23: // TWO_THIRDS // 2/3x gain +/- 6.144V  1 bit = 0.1875mV
-    adc.set_pga(ADS1115_PGA_TWO_THIRDS);
-    ADS_PGA = 0.1875;
-    break;
-  case 1: //  ONE        // 1x gain   +/- 4.096V  1 bit = 0.125mV
-    adc.set_pga(ADS1115_PGA_ONE);
-    ADS_PGA = 0.125;
-    break;
-  case 2: //  TWO        // 2x gain   +/- 2.048V  1 bit = 0.0625mV
-    adc.set_pga(ADS1115_PGA_TWO);
-    ADS_PGA = 0.0625;
-    break;
-  case 4: //  FOUR       // 4x gain   +/- 1.024V  1 bit = 0.03125mV
-    adc.set_pga(ADS1115_PGA_FOUR);
-    ADS_PGA = 0.03125;
-    break;
-  case 8: //  EIGHT      // 8x gain   +/- 0.512V  1 bit = 0.015625mV
-    adc.set_pga(ADS1115_PGA_EIGHT);
-    ADS_PGA = 0.015625;
-    break;
-  case 16: //  SIXTEEN    // 16x gain  +/- 0.256V  1 bit = 0.0078125mV
-    adc.set_pga(ADS1115_PGA_SIXTEEN);
-    ADS_PGA = 0.0078125;
-    break;
+    case 23: // TWO_THIRDS // 2/3x gain +/- 6.144V  1 bit = 0.1875mV
+      adc.set_pga(ADS1115_PGA_TWO_THIRDS);
+      ADS_PGA = 0.1875;
+      break;
+    case 1: //  ONE        // 1x gain   +/- 4.096V  1 bit = 0.125mV
+      adc.set_pga(ADS1115_PGA_ONE);
+      ADS_PGA = 0.125;
+      break;
+    case 2: //  TWO        // 2x gain   +/- 2.048V  1 bit = 0.0625mV
+      adc.set_pga(ADS1115_PGA_TWO);
+      ADS_PGA = 0.0625;
+      break;
+    case 4: //  FOUR       // 4x gain   +/- 1.024V  1 bit = 0.03125mV
+      adc.set_pga(ADS1115_PGA_FOUR);
+      ADS_PGA = 0.03125;
+      break;
+    case 8: //  EIGHT      // 8x gain   +/- 0.512V  1 bit = 0.015625mV
+      adc.set_pga(ADS1115_PGA_EIGHT);
+      ADS_PGA = 0.015625;
+      break;
+    case 16: //  SIXTEEN    // 16x gain  +/- 0.256V  1 bit = 0.0078125mV
+      adc.set_pga(ADS1115_PGA_SIXTEEN);
+      ADS_PGA = 0.0078125;
+      break;
   }
 }
 
@@ -686,8 +688,12 @@ void iotWebConfSetup(void)
 {
   // -- Define how to handle updateServer calls.
   iotWebConf.setupUpdateServer(
-      [](const char *updatePath) { httpUpdater.setup(&server, updatePath); },
-      [](const char *userName, char *password) { httpUpdater.updateCredentials(userName, password); });
+  [](const char *updatePath) {
+    httpUpdater.setup(&server, updatePath);
+  },
+  [](const char *userName, char *password) {
+    httpUpdater.updateCredentials(userName, password);
+  });
 
   mqttGroup.addItem(&mqttUserParam);
   mqttGroup.addItem(&mqttPassParam);
@@ -713,7 +719,9 @@ void iotWebConfSetup(void)
   server.on("/json", handleJSON);
   server.on("/set", HTTP_POST, handleSetvals);
   server.on("/config", [] { iotWebConf.handleConfig(); });
-  server.onNotFound([]() { iotWebConf.handleNotFound(); });
+  server.onNotFound([]() {
+    iotWebConf.handleNotFound();
+  });
 
   mqttEnabled = mqttEnabledParam.isChecked();
   myThingName = iotWebConf.getThingName();
