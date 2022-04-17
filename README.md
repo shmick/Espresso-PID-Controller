@@ -5,6 +5,9 @@ The slow responding and somewhat innacturate bimetal coffee thermostat is replac
 connected to an Arduino controller that controls a Solid State Relay (SSR) to control power to the small boiler inside
 the espresso machine.
 
+### 2022-04-16 Update
+* Fix: Small changes required to compile using IotWebConf v3.2.0
+
 ### 2021-01-14 Update
 * Fix: Enable PID on startup if operMode = true 
 
