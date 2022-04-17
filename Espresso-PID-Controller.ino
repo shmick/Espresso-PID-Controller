@@ -61,8 +61,9 @@ const int steamReset = 3;               // Flip steam on/off to reset opermode i
 const int steamMaxMins = 10;            // Max number of minutes we can remain in steam mode
 const int maxDisplayMins = 200;         // Turn the display off after 200 minutes
 double Setpoint = 105;                  // This will be the default coffee setpoint
-const double CoffeeSetpoint = Setpoint; // This will be the default coffee setpoint
+double CoffeeSetpoint = Setpoint;       // This will be the default coffee setpoint
 const double SteamSetpoint = 125;       // This will be the default steam  setpoint
+const double maxSetpointVal = 110;      // This will be the max value for setting the brewing setpoint
 const int maxBoilerTemp = 140;          // Forcibly keep the relay off if this temp is reached
 const int WindowSize = 5000;            // PID PWM Window in milliseconds
 
@@ -179,6 +180,11 @@ bool steamTimer = false;
 unsigned long steamTimeStart;
 unsigned long steamTimeMillis;
 Button steamsw(SteamPin, 750); // debounce the steam switch
+
+// For setting values via MQTT
+bool operModeVal;
+bool steamModeVal;
+double SetpointVal;
 
 // Setup I2C pins
 #define ESP_SCL D5
@@ -377,7 +383,9 @@ void steamSwitch()
   // if switch is on, set steamMode to true
   if (steamsw.isPressed() && !steamMode)
     steamMode = true;
-  else if (!steamsw.isPressed() && steamMode)
+  else if (!steamsw.isPressed() && !steamMode && steamModeVal)
+    steamMode = true;
+  else if (!steamsw.isPressed() && steamMode && !steamModeVal)
     steamMode = false;
 
   // start the steamTimer when the steamMode is active
@@ -411,8 +419,10 @@ void steamSwitch()
 
   // This must be the last if statement. It's a safety check to ensure
   // that we set enablePID to false if the steam switch has been on too long
-  if (steamTimeMillis / 1000 / 60 >= steamMaxMins)
+  if (steamsw.isPressed() && steamTimeMillis / 1000 / 60 >= steamMaxMins)
     enablePID(false);
+  else if (steamModeVal && steamTimeMillis / 1000 / 60 >= steamMaxMins)
+    steamModeVal = false;
   else if (steamMode && operMode && Setpoint != SteamSetpoint)
     Setpoint = SteamSetpoint;
   else if (!steamMode && operMode && Setpoint != CoffeeSetpoint)
@@ -754,12 +764,26 @@ void mqttMessageReceived(String &topic, String &payload)
     StaticJsonDocument<200> doc;
     deserializeJson(doc, payload);
 
-    bool operModeVal = doc["operMode"];
+    if (doc.containsKey("operMode")) {
+      operModeVal = doc["operMode"];
+      Serial.println("operModeVal");
+      Serial.println(operMode);
+      enablePID(operModeVal);
+    }
 
-    if (operModeVal)
-      enablePID(operModeVal);
-    else if (!operModeVal)
-      enablePID(operModeVal);
+    if (doc.containsKey("steamMode")) {
+      steamModeVal = doc["steamMode"];
+      Serial.println("steamModeVal");
+      Serial.println(steamMode);
+    }
+
+    if (doc.containsKey("Setpoint")) {
+      SetpointVal = doc["Setpoint"];
+      Serial.println("SetpointVal");
+      Serial.println(Setpoint);
+      if (SetpointVal <= maxSetpointVal && SetpointVal >= 1)
+        CoffeeSetpoint = SetpointVal;
+    }
   }
 }
 
