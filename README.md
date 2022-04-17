@@ -5,6 +5,10 @@ The slow responding and somewhat innacturate bimetal coffee thermostat is replac
 connected to an Arduino controller that controls a Solid State Relay (SSR) to control power to the small boiler inside
 the espresso machine.
 
+### 2022-04-17 Update
+* Add ability to change Setpoint via MQTT `{"Setpoint":<number between 1 and 110>}` 
+* Add ability to enable steamMode via MQTT `{"steamMode":true|false}`
+
 ### 2022-04-16 Update
 * Fix: Small changes required to compile using IotWebConf v3.2.0
 
@@ -41,5 +45,7 @@ Example stat payload `{"Name":"thingName","Uptime":60,"Runtime":60,"Setpoint":10
 
 MQTT command topic = `espresso/<thingName>/cmnd`
 
-Right now the only command payload is `{"operMode":true|false}`
+* `{"operMode":true|false}`
+* `{"steamMode":true|false}`
+* `{"Setpoint":<number between 1 and 110>}`
 
