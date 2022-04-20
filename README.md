@@ -5,21 +5,8 @@ The slow responding and somewhat innacturate bimetal coffee thermostat is replac
 connected to an Arduino controller that controls a Solid State Relay (SSR) to control power to the small boiler inside
 the espresso machine.
 
-### 2022-04-17 Update
-* Add ability to change Setpoint via MQTT `{"Setpoint":<number between 1 and 110>}` 
-* Add ability to enable steamMode via MQTT `{"steamMode":true|false}`
-
-### 2022-04-16 Update
-* Fix: Small changes required to compile using IotWebConf v3.2.0
-
-### 2021-01-14 Update
-* Fix: Enable PID on startup if operMode = true 
-
-### 2021-01-13 Update
-* Add MQTT Last Will and Testament. Topic = `espresso/<thingname>/avail` 
-* Update Home Assistant [switch](home-assistant/switch.yaml) and [sensor](home-assistant/sensor.yaml) examples to use MQTT availability topic
-* Fixed a bug that caused steam switch reset to sometimes set operMode to true directly after setting it to false
-* Minor code cleanup
+### 2022-04-20 Update
+* Fix: MQTT reconnect changed from 2 to 15 to stop reconnect from blocking the rest of the loop
 
 ### See [CHANGELOG](CHANGELOG.md) for previous updates
 
