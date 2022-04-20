@@ -443,7 +443,7 @@ void trackloop()
 
 bool connectMqtt()
 {
-  if (2000 > now - lastMqttConnectionAttempt) // Do not repeat within 2 seconds.
+  if (15000 > now - lastMqttConnectionAttempt) // Do not repeat within 2 seconds.
     return false;
 
   Serial.println("Connecting to MQTT server...");

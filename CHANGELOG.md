@@ -1,5 +1,14 @@
 ## Changelog for Espresso PID Controller
 
+### 2022-04-20 Update
+* Fix: MQTT reconnect changed from 2 to 15 to stop reconnect from blocking the rest of the loop
+
+### 2022-04-17 Update
+* Add ability to change Setpoint via MQTT `{"Setpoint":<number between 1 and 110>}` 
+* Add ability to enable steamMode via MQTT `{"steamMode":true|false}`
+
+### 2022-04-16 Update
+* Fix: Small changes required to compile using IotWebConf v3.2.0
 
 ### 2021-01-13 Update
 * Add MQTT Last Will and Testament. Topic = `espresso/<thingname>/avail` 
